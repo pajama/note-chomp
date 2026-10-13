@@ -172,6 +172,49 @@ describe('parseMusicXml', () => {
     ]);
   });
 
+  it('rejects a middle measure that is too short or too long', () => {
+    const q = n('C', 4, 'quarter');
+    expect(errors(score([q.repeat(4), q.repeat(3), q.repeat(4), q.repeat(4)]))).toEqual([
+      'Measure 2: this measure has 3 beats but 4/4 needs 4 beats.',
+    ]);
+    expect(errors(score([q.repeat(4), q.repeat(5), q.repeat(4)]))).toEqual([
+      'Measure 2: this measure has 5 beats but 4/4 needs 4 beats.',
+    ]);
+    expect(errors(score([q.repeat(5), q.repeat(4)]))).toEqual([
+      'Measure 1: this measure has 5 beats but 4/4 needs 4 beats.',
+    ]);
+  });
+
+  it('accepts a short last measure', () => {
+    const q = n('C', 4, 'quarter');
+    expect(ok(score([q.repeat(4), q.repeat(2)])).song.events).toHaveLength(6);
+  });
+
+  it('pads a short first measure as a pickup even without implicit="yes"', () => {
+    const { song, warnings } = ok(score([n('G', 4, 'quarter'), n('C', 5, 'whole')]));
+    expect(song.events).toEqual([rest('h', true), note('G', 4, 'q'), note('C', 5, 'w')]);
+    expect(warnings.map((w) => w.message)).toEqual([
+      'The tune starts with a pickup — rests were added at the start so the bar lines line up.',
+    ]);
+  });
+
+  it('joins a short measure with a following implicit measure (a bar split by a repeat sign)', () => {
+    const q = n('C', 4, 'quarter');
+    const xml = score([q.repeat(4), q.repeat(3), q, q.repeat(4)]).replace(
+      '<measure number="3">',
+      '<measure number="3" implicit="yes">',
+    );
+    expect(ok(xml).song.events).toHaveLength(12);
+  });
+
+  it('does not count measure lengths when a note in the measure was rejected', () => {
+    expect(
+      errors(score([n('C', 4, 'quarter').repeat(3) + n('C', 4, '16th'), n('C', 4, 'whole')])),
+    ).toEqual([
+      "Measure 1: one C has a length Note Chomp can't show yet — use whole, half, quarter or eighth notes (dotted is OK).",
+    ]);
+  });
+
   it('warns when extra parts or lyrics are dropped', () => {
     const { warnings } = ok(
       score([n('C', 4, 'whole', '<lyric><text>la</text></lyric>')], { parts: 2 }),

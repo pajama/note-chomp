@@ -8,7 +8,7 @@ import {
   type TimeSignature,
 } from '../../core/model/types';
 import { isInRange } from '../../core/theory/pitch';
-import { eventUnits, measureUnits, unitsToDuration } from '../../core/theory/rhythm';
+import { eventUnits, formatBeats, measureUnits, unitsToDuration } from '../../core/theory/rhythm';
 import { finalizeImport } from '../finalize';
 import {
   dottedEighthError,
@@ -92,29 +92,30 @@ export function parseMusicXml(xml: string): ImportResult {
     else if (childNamed(el, 'repeat')) issues.warn(REPEATS_WARNING);
   };
 
-  const readNote = (el: Element, m: number) => {
+  /** Reads one <note>; returns false when it was dropped without its length being counted. */
+  const readNote = (el: Element, m: number): boolean => {
     if (childNamed(el, 'grace')) {
       issues.warn('Grace notes were ignored.');
-      return;
+      return true;
     }
-    if (childNamed(el, 'cue')) return;
+    if (childNamed(el, 'cue')) return true;
     if (childNamed(el, 'chord')) {
       issues.error(`Measure ${m}: chords (several notes at once) aren't supported.`);
-      return;
+      return false;
     }
     const v = textOf(el, 'voice') ?? '1';
     voice ??= v;
     if (v !== voice) {
       issues.error(VOICES_MSG);
-      return;
+      return false;
     }
     if (childNamed(el, 'time-modification')) {
       issues.error(`Measure ${m}: triplets and other tuplets aren't supported.`);
-      return;
+      return false;
     }
     if (childrenNamed(el, 'tie').some((t) => t.getAttribute('type') === 'start')) {
       issues.error(`Measure ${m}: tied notes aren't supported yet.`);
-      return;
+      return false;
     }
     if (childNamed(el, 'lyric')) issues.warn('Lyrics were ignored.');
 
@@ -127,7 +128,7 @@ export function parseMusicXml(xml: string): ImportResult {
       (!pitchEl || !step || !(PITCHES as readonly string[]).includes(step) || Number.isNaN(octave))
     ) {
       issues.warn(`Skipped an unpitched note in measure ${m}.`);
-      return;
+      return false;
     }
     const pitch = step as Pitch;
     const subject: Pitch | 'rest' = restEl ? 'rest' : pitch;
@@ -135,7 +136,7 @@ export function parseMusicXml(xml: string): ImportResult {
     const dots = childrenNamed(el, 'dot').length;
     if (dots > 1) {
       issues.error(`Measure ${m}: double-dotted notes aren't supported.`);
-      return;
+      return false;
     }
 
     const type = textOf(el, 'type');
@@ -149,7 +150,7 @@ export function parseMusicXml(xml: string): ImportResult {
       const base = TYPE_UNITS[type];
       if (base === undefined) {
         issues.error(lengthError(m, subject));
-        return;
+        return false;
       }
       units = dots ? base * 1.5 : base;
     } else {
@@ -158,35 +159,38 @@ export function parseMusicXml(xml: string): ImportResult {
     const d = unitsToDuration(units);
     if (!d) {
       issues.error(lengthError(m, subject));
-      return;
+      return false;
     }
     if (d.duration === 'e' && d.dotted) {
       issues.error(dottedEighthError(m, restEl ? 'rest' : 'note'));
-      return;
+      return false;
     }
 
     if (restEl) {
       events.push(rest(d.duration, d.dotted));
-      return;
+      return true;
     }
     const alter = Number(textOf(pitchEl, 'alter') ?? '0');
     if (alter !== 0) {
       issues.error(
         `Measure ${m}: ${pitch}${alter > 0 ? '♯' : '♭'} isn't in the key of C. Only white keys are supported for now.`,
       );
-      return;
+      return false;
     }
     if (!isInRange(pitch, octave)) {
       issues.error(rangeError(m, pitch, octave));
-      return;
+      return false;
     }
     events.push(note(pitch, octave as Octave, d.duration, d.dotted));
+    return true;
   };
 
   const measures = childrenNamed(parts[0], 'measure');
-  let firstMeasureEvents = 0;
+  const bars: { measure: number; units: number; known: boolean; implicit: boolean }[] = [];
   measures.forEach((measureEl, index) => {
     const m = index + 1;
+    const startEvent = events.length;
+    let known = true;
     for (const el of Array.from(measureEl.children)) {
       switch (el.localName) {
         case 'attributes':
@@ -195,6 +199,7 @@ export function parseMusicXml(xml: string): ImportResult {
         case 'backup':
         case 'forward':
           issues.error(VOICES_MSG);
+          known = false;
           break;
         case 'barline':
           readBarline(el, m);
@@ -206,29 +211,47 @@ export function parseMusicXml(xml: string): ImportResult {
           issues.warn('Chord symbols were ignored.');
           break;
         case 'note':
-          readNote(el, m);
+          if (!readNote(el, m)) known = false;
           break;
         default:
           break;
       }
     }
-    if (index === 0) firstMeasureEvents = events.length;
+    bars.push({
+      measure: m,
+      units: events.slice(startEvent).reduce((sum, e) => sum + eventUnits(e), 0),
+      known,
+      implicit: measureEl.getAttribute('implicit') === 'yes',
+    });
   });
 
   if (!timeSignature) issues.warn('No time signature was found — using 4/4.');
   const meter = timeSignature ?? '4/4';
+  const full = measureUnits(meter);
 
-  // A short first measure marked implicit is a pickup: put rests in front so the bar lines line up.
-  const pickupUnits = events
-    .slice(0, firstMeasureEvents)
-    .reduce((sum, e) => sum + eventUnits(e), 0);
-  if (
-    measures.length > 1 &&
-    measures[0].getAttribute('implicit') === 'yes' &&
-    pickupUnits > 0 &&
-    pickupUnits < measureUnits(meter)
-  ) {
-    const padding = fillRests(measureUnits(meter) - pickupUnits);
+  // Every measure except the last must be full. A short first measure is a pickup, and a short
+  // measure followed by an implicit one is a single bar split in two (usually by a repeat sign).
+  for (let k = 0; k < bars.length; k++) {
+    const bar = bars[k];
+    let units = bar.units;
+    let known = bar.known;
+    const next = bars[k + 1];
+    if (k > 0 && units < full && next?.implicit) {
+      units += next.units;
+      known &&= next.known;
+      k++;
+    }
+    if (!known || k === bars.length - 1 || units === full) continue;
+    if (bar === bars[0] && units < full) continue;
+    issues.error(
+      `Measure ${bar.measure}: this measure has ${formatBeats(units)} but ${meter} needs ${formatBeats(full)}.`,
+    );
+  }
+
+  // A short first measure is a pickup: put rests in front so the bar lines line up.
+  const pickupUnits = bars[0]?.units ?? 0;
+  if (bars.length > 1 && bars[0].known && pickupUnits > 0 && pickupUnits < full) {
+    const padding = fillRests(full - pickupUnits);
     if (padding) {
       events.unshift(...padding);
       issues.warn(PICKUP_WARNING);
