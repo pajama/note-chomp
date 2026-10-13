@@ -38,4 +38,14 @@ describe('NoteChomp JSON', () => {
       ],
     });
   });
+
+  it('rejects dotted eighths like the other importers', () => {
+    const result = parseNoteChompJson(
+      JSON.stringify({ ...song, events: [note('C', 4, 'e', true), note('C', 4, 'e')] }),
+    );
+    expect(result).toEqual({
+      ok: false,
+      errors: [{ message: "Measure 1: dotted eighth notes aren't supported yet." }],
+    });
+  });
 });

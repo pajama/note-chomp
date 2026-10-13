@@ -4,6 +4,9 @@ import { isInRange, RANGE_LABEL } from '../theory/pitch';
 import { splitIntoMeasures } from '../theory/rhythm';
 import { DURATIONS, PITCHES, TIME_SIGNATURES, type Song } from './types';
 
+export const MAX_TITLE_LENGTH = 100;
+export const MAX_EVENTS = 2000;
+
 const durationSchema = z.enum(DURATIONS);
 
 const noteSchema = z.object({
@@ -24,9 +27,21 @@ export const songSchema = z
   .object({
     schemaVersion: z.literal(1),
     id: z.string().min(1),
-    title: z.string().trim().min(1, 'Give the song a title.').max(100),
+    title: z
+      .string()
+      .trim()
+      .min(1, 'Give the song a title.')
+      .max(
+        MAX_TITLE_LENGTH,
+        `The title is too long — keep it to ${MAX_TITLE_LENGTH} characters or fewer.`,
+      ),
     timeSignature: z.enum(TIME_SIGNATURES),
-    events: z.array(z.discriminatedUnion('kind', [noteSchema, restSchema])).max(2000),
+    events: z
+      .array(z.discriminatedUnion('kind', [noteSchema, restSchema]))
+      .max(
+        MAX_EVENTS,
+        `This song is too long — Note Chomp songs can have up to ${MAX_EVENTS} notes and rests.`,
+      ),
   })
   .superRefine((song, ctx) => {
     song.events.forEach((event, i) => {

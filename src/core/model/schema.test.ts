@@ -25,6 +25,17 @@ describe('validateSong', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('explains an over-long title or song in plain words', () => {
+    const longTitle = validateSong({ ...base, title: 'x'.repeat(101), events: [] });
+    expect(longTitle.ok || longTitle.error.map((i) => i.message)).toEqual([
+      'The title is too long — keep it to 100 characters or fewer.',
+    ]);
+    const longSong = validateSong({ ...base, events: Array(2001).fill(note('C', 4, 'w')) });
+    expect(longSong.ok || longSong.error.map((i) => i.message)).toEqual([
+      'This song is too long — Note Chomp songs can have up to 2000 notes and rests.',
+    ]);
+  });
+
   it('rejects notes outside G3–C6 with a numbered message', () => {
     const result = validateSong({ ...base, events: [note('C', 4, 'q'), note('F', 3, 'q')] });
     expect(result).toEqual({

@@ -27,6 +27,14 @@ describe('detectFormat', () => {
 });
 
 describe('importSong', () => {
+  it('imports a tune whose title is longer than 100 characters', () => {
+    const result = importSong({
+      kind: 'text',
+      text: ABC.replace('T:Tiny', `T:${'La '.repeat(50)}`),
+    });
+    expect(result.ok && result.song.title.length).toBe(100);
+  });
+
   it('imports pasted ABC with a fresh id', () => {
     const result = importSong({ kind: 'text', text: ABC });
     expect(result.ok).toBe(true);
