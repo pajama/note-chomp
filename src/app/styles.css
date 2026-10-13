@@ -216,3 +216,21 @@ textarea {
 .songbook section {
   margin-bottom: 32px;
 }
+
+.editor-controls {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.octave-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.hint {
+  color: var(--muted);
+  margin: 0;
+  font-size: 0.9rem;
+}
