@@ -15,7 +15,7 @@ function SongCard({ song, actions }: { song: Song; actions: ReactNode }) {
       <h3>{song.title}</h3>
       <FruitStrip song={song} />
       <p className="muted">
-        {song.timeSignature} · {noteCount} notes
+        {song.timeSignature} · {noteCount} {noteCount === 1 ? 'note' : 'notes'}
       </p>
       <div className="actions">{actions}</div>
     </article>

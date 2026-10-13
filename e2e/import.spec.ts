@@ -35,3 +35,20 @@ test('imports a MusicXML file', async ({ page }) => {
   });
   await expect(page.getByRole('heading', { name: 'From MuseScore' })).toBeVisible();
 });
+
+test('explains when a chosen file cannot be read, and lets you choose it again', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    File.prototype.arrayBuffer = () => Promise.reject(new Error('disk on fire'));
+  });
+  await page.goto('/#/import');
+  const input = page.locator('input[type="file"]');
+  await input.setInputFiles({
+    name: 'song.musicxml',
+    mimeType: 'application/xml',
+    buffer: Buffer.from(XML),
+  });
+  await expect(page.getByRole('alert')).toContainText("That file couldn't be read.");
+  await expect(input).toHaveValue('');
+});

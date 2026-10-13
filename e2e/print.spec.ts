@@ -38,3 +38,14 @@ test('preview responds to label and legend options', async ({ page }) => {
   await page.getByLabel('Fruit legend').uncheck();
   await expect(page.locator('[data-kind="legend"]')).toHaveCount(0);
 });
+
+test('a PDF error is shown on screen but not printed on paper', async ({ page }) => {
+  await page.route(/svg2pdf/, (route) => route.abort());
+  await page.goto('/#/print/builtin-hot-cross-buns');
+  await page.getByRole('button', { name: 'Download PDF' }).click();
+  const alert = page.getByRole('alert');
+  await expect(alert).toContainText("Couldn't make the PDF");
+  await expect(alert).toBeVisible();
+  await page.emulateMedia({ media: 'print' });
+  await expect(alert).toBeHidden();
+});

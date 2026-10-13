@@ -25,3 +25,18 @@ test('copies a starter song, then deletes the copy', async ({ page }) => {
   await copy.getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByText('No songs yet.')).toBeVisible();
 });
+
+test('says "1 note" rather than "1 notes"', async ({ page }) => {
+  await page.goto('/#/new');
+  await page.getByLabel('Song title').fill('Just One');
+  await page.getByRole('button', { name: 'Add C4' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Saved', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Note Chomp' }).click();
+  const card = page.getByTestId('song-card').filter({ hasText: 'Just One' });
+  await expect(card).toContainText('· 1 note');
+  await expect(card).not.toContainText('1 notes');
+  await expect(page.getByTestId('song-card').filter({ hasText: 'Hot Cross Buns' })).toContainText(
+    '17 notes',
+  );
+});

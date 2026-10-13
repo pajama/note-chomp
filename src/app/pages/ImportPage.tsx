@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent } from 'react';
 import { importSong, type ImportSource } from '../../formats/importSong';
-import type { ImportResult } from '../../formats/types';
+import { importFailure, type ImportResult } from '../../formats/types';
 import { SongPages } from '../components/SongPages';
 import { navigate } from '../router';
 import { messageOf, useSongLibrary } from '../useSongLibrary';
@@ -22,8 +22,14 @@ export function ImportPage() {
     const input = e.currentTarget;
     const file = input.files?.[0];
     if (!file) return;
-    run({ kind: 'file', name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
-    input.value = '';
+    try {
+      run({ kind: 'file', name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+    } catch {
+      setResult(importFailure(["That file couldn't be read."]));
+    } finally {
+      // Let the same file be chosen again.
+      input.value = '';
+    }
   };
 
   const saveAnd = async (next: 'songbook' | 'edit' | 'print') => {

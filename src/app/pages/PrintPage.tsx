@@ -128,9 +128,9 @@ export function PrintPage({ songId }: { songId: string }) {
         </div>
       </div>
       {error && (
-        <div className="alert error" role="alert">
+        <div className="alert error no-print" role="alert">
           {error}{' '}
-          <button type="button" onClick={() => void exportPdf()}>
+          <button type="button" disabled={busy} onClick={() => void exportPdf()}>
             Try again
           </button>
         </div>
