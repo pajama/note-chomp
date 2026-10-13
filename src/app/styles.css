@@ -234,3 +234,15 @@ textarea {
   margin: 0;
   font-size: 0.9rem;
 }
+.print-options {
+  margin-bottom: 20px;
+}
+.print-options h1 {
+  margin-top: 0;
+}
+.print-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
