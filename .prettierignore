@@ -9,3 +9,4 @@ package-lock.json
 ape-docs.json
 *.abc
 **/__snapshots__
+.superpowers

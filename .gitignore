@@ -20,3 +20,6 @@ art-concepts/
 ape-docs.json
 
 .DS_Store
+
+# generated TypeScript build info
+*.tsbuildinfo
