@@ -85,6 +85,14 @@ describe('generateImage', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('redacts the key before cutting the body short, so no prefix of it leaks', async () => {
+    const body = `${'x'.repeat(295)}secret-key and more`;
+    const fetchImpl = vi.fn(async () => new Response(body, { status: 400 }));
+    const error = await generateImage(REQ, asFetch(fetchImpl)).catch((e: unknown) => e);
+    expect((error as ApeError).message).not.toContain('secre');
+    expect((error as ApeError).message).toContain('[reda');
+  });
+
   it('throws when the response has no image', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ created: 1, data: [] })));
     await expect(generateImage(REQ, asFetch(fetchImpl))).rejects.toThrow('APE returned no image.');

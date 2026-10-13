@@ -82,7 +82,7 @@ export async function generateImage(
       signal: AbortSignal.timeout(APE_TIMEOUT_MS),
     });
     if (!res.ok) {
-      const text = redact((await res.text()).slice(0, 300));
+      const text = redact(await res.text()).slice(0, 300);
       throw new ApeError(
         `APE image request failed (${res.status}): ${text}`,
         res.status,
