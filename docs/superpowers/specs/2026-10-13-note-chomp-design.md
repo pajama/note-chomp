@@ -1,7 +1,7 @@
 # Note Chomp — Design Spec
 
 **Date:** 2026-10-13
-**Status:** Approved design, pending implementation plan
+**Status:** Approved design; implementation plan in `docs/superpowers/plans/2026-10-13-note-chomp/`
 
 ## 1. Purpose
 
@@ -43,12 +43,12 @@ Octaves share fruit and color (C4 and C5 are both apples).
 | D | Re | Orange | Orange | Round, dimpled texture, small leaf |
 | E | Mi | Yellow | Lemon | Oval with pointed ends |
 | F | Fa | Green | Pear | Teardrop/bell |
-| G | Sol | Light blue | Blueberry | Small round with star crown |
+| G | Sol | Turquoise | Blueberry | Small round with star crown |
 | A | La | Purple | Grape bunch | Cluster of circles |
 | B | Ti | Pink | Raspberry | Bumpy dome of drupelets (rendered clearly pink, not red) |
 
-Exact hex values are defined once in the palette module and verified against the Prodigies
-legend during implementation.
+Exact hex values are defined once in the palette module. Prodigies uses the Chroma-Notes
+(Boomwhackers) color system; G is turquoise in that system.
 
 ## 3. Architecture
 
@@ -73,7 +73,7 @@ src/
   export/pdf/   LayoutTree pages → vector PDF (jsPDF + svg2pdf.js)
   persistence/  SongRepository interface + LocalStorageSongRepository
   app/          React UI: Songbook, Editor, Import dialog, Print preview
-  songs/        bundled starter melodies (*.notechomp.json)
+  songs/        bundled starter melodies (*.abc, parsed by our ABC importer)
 scripts/ape/    dev-only Node script for concept art generation via APE
 ```
 
@@ -109,6 +109,7 @@ snapshot-tested.
 | Option | Default |
 |---|---|
 | `paper` | `'letter'` (`'a4'` available) |
+| `staffSpaceMm` | `6.5` = Large, 3 staves/Letter page (`9` = Jumbo, 2 staves/page) |
 | `sizeByDuration` | `false` (e 0.8×, q 1×, h 1.15×, w 1.3×) |
 | `noteLabels` | `'letter'` (`'solfege'`, `'none'`) |
 | `showLegend` | `true` |
@@ -117,7 +118,9 @@ snapshot-tested.
 
 ## 4. Visual design
 
-- **Staff:** line spacing ≈ 14 mm; 3 systems per Letter page; thick soft-charcoal lines.
+- **Staff:** line spacing 6.5 mm (Large, ≈3.5× normal; 3 systems per Letter page) or 9 mm
+  (Jumbo, 2 systems per page). 14 mm was considered but cannot fit the G3–C6 range plus labels
+  more than once per page. Thick soft-charcoal lines.
 - **Fruit heads:** body is one staff-space tall, centered exactly on its line/space. Decorations
   (leaves, stems, crowns) extend sideways/up and never cover an adjacent staff line.
   - Quarter/eighth: solid colored fruit.
@@ -147,15 +150,17 @@ snapshot-tested.
 - Ignorable content (lyrics, dynamics, tempo) is dropped with a warning.
 
 ### Songbook & persistence
-- Bundled starter songs (6–8: Hot Cross Buns, Mary Had a Little Lamb, Twinkle Twinkle, Ode to Joy,
-  Jingle Bells chorus, Row Row Row Your Boat, London Bridge, Au Clair de la Lune) — all within range.
+- Bundled starter songs as `.abc` files (add a melody = add a file): Hot Cross Buns, Mary Had a
+  Little Lamb, Twinkle Twinkle, Ode to Joy, Jingle Bells chorus, London Bridge, Au Clair de la Lune,
+  Old MacDonald — all within range. (Row Row Row Your Boat is in 6/8, so it is excluded.)
 - User songs stored via `SongRepository` (localStorage implementation). Records are versioned and
   zod-validated on load; invalid records are quarantined, not fatal.
 - Export/import single songs as `.notechomp.json`.
 
 ### Print preview & PDF export
 - Preview page renders exactly the pages that will be exported, with RenderOptions controls.
-- Export produces a vector PDF (embedded font) named from the song title.
+- Export produces a vector PDF named from the song title. Text uses the standard PDF Helvetica
+  font (universally available, no embedding needed).
 
 ## 6. Art pipeline (hybrid)
 
@@ -174,7 +179,8 @@ snapshot-tested.
   boundary; core functions assume valid input.
 - Parsers report errors with measure/position context; the UI shows them in plain language.
 - PDF export failures surface a toast with a retry; they never leave the UI in a broken state.
-- A top-level React error boundary shows a friendly fallback and offers to export the current song.
+- The editor autosaves a draft; a top-level React error boundary shows a friendly fallback and
+  offers to download that draft.
 
 ## 8. Testing & tooling
 
