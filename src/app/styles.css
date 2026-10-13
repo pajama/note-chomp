@@ -203,3 +203,16 @@ textarea {
     break-after: page;
   }
 }
+
+.fruit-strip {
+  height: 32px;
+  width: auto;
+  max-width: 100%;
+}
+.muted {
+  color: var(--muted);
+  margin: 0;
+}
+.songbook section {
+  margin-bottom: 32px;
+}
