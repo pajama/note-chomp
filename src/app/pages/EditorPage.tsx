@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { createEditorState, editorReducer } from '../../core/editor/editorReducer';
 import { createEmptySong } from '../../core/model/factories';
 import { newSongId } from '../../core/model/id';
@@ -8,14 +8,24 @@ import { DurationPicker } from '../components/DurationPicker';
 import { FruitKeyboard } from '../components/FruitKeyboard';
 import { SongPages } from '../components/SongPages';
 import { useEditorKeyboard } from '../hooks/useEditorKeyboard';
-import { navigate } from '../router';
+import { navigate, setNavigationGuard } from '../router';
 import { useServices } from '../services';
 import { messageOf, useSongLibrary, type SongLibrary } from '../useSongLibrary';
 
-export function EditorPage({ songId }: { songId?: string }) {
+export const LEAVE_UNSAVED_MESSAGE = 'Your song is not saved yet. Leave without saving it?';
+
+interface EditorPageProps {
+  songId?: string;
+  /** Called when a save gives the song an address of its own, just before going there. */
+  onSavedAs?: (id: string) => void;
+}
+
+export function EditorPage({ songId, onSavedAs }: EditorPageProps) {
   const library = useSongLibrary();
   if (songId === undefined)
-    return <EditorWorkspace initialSong={createEmptySong()} library={library} />;
+    return (
+      <EditorWorkspace initialSong={createEmptySong()} library={library} onSavedAs={onSavedAs} />
+    );
   if (library.status === 'loading') return <p>Loading…</p>;
   const entry = library.find(songId);
   if (!entry) {
@@ -31,10 +41,18 @@ export function EditorPage({ songId }: { songId?: string }) {
   const initial = entry.builtin
     ? { ...entry.song, id: newSongId(), title: `${entry.song.title} (my copy)` }
     : entry.song;
-  return <EditorWorkspace initialSong={initial} library={library} />;
+  return <EditorWorkspace initialSong={initial} library={library} onSavedAs={onSavedAs} />;
 }
 
-function EditorWorkspace({ initialSong, library }: { initialSong: Song; library: SongLibrary }) {
+function EditorWorkspace({
+  initialSong,
+  library,
+  onSavedAs,
+}: {
+  initialSong: Song;
+  library: SongLibrary;
+  onSavedAs?: (id: string) => void;
+}) {
   const { storage } = useServices();
   const [state, dispatch] = useReducer(editorReducer, initialSong, createEditorState);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -53,12 +71,24 @@ function EditorWorkspace({ initialSong, library }: { initialSong: Song; library:
     return () => window.removeEventListener('beforeunload', warn);
   }, [state.dirty]);
 
+  // Leaving inside the app (header links, Back, #/ links) is a hash change, not an unload.
+  // A ref, so a save can clear it before its own navigation without waiting for a re-render.
+  const dirtyRef = useRef(state.dirty);
+  useLayoutEffect(() => {
+    dirtyRef.current = state.dirty;
+  }, [state.dirty]);
+  useEffect(
+    () => setNavigationGuard(() => !dirtyRef.current || window.confirm(LEAVE_UNSAVED_MESSAGE)),
+    [],
+  );
+
   const save = async (): Promise<Song | undefined> => {
     setSaving(true);
     setSaveError(null);
     try {
       const saved = await library.save(state.song);
       dispatch({ type: 'markSaved' });
+      dirtyRef.current = false;
       clearDraft(storage);
       return saved;
     } catch (e) {
@@ -71,7 +101,9 @@ function EditorWorkspace({ initialSong, library }: { initialSong: Song; library:
 
   const onSave = async () => {
     const saved = await save();
-    if (saved) navigate({ name: 'edit', id: saved.id });
+    if (!saved) return;
+    onSavedAs?.(saved.id);
+    navigate({ name: 'edit', id: saved.id });
   };
 
   const onPrint = async () => {
@@ -122,7 +154,7 @@ function EditorWorkspace({ initialSong, library }: { initialSong: Song; library:
           Redo
         </button>
         <button type="button" disabled={saving} onClick={() => void onSave()}>
-          {state.dirty ? 'Save' : 'Saved'}
+          {state.dirty || library.find(state.song.id) === undefined ? 'Save' : 'Saved'}
         </button>
         <button
           type="button"
