@@ -5,10 +5,10 @@ import { breakIntoSystems, eventAdvance, measureWidth } from './spacing';
 
 describe('eventAdvance', () => {
   it('grows with duration and dots', () => {
-    expect(eventAdvance(note('C', 4, 'e'))).toBeCloseTo(1.9);
-    expect(eventAdvance(note('C', 4, 'q'))).toBeCloseTo(2.4);
-    expect(eventAdvance(note('C', 4, 'q', true))).toBeCloseTo(2.9);
-    expect(eventAdvance(rest('w'))).toBeCloseTo(4.4);
+    expect(eventAdvance(note('C', 4, 'e'))).toBeCloseTo(2.1);
+    expect(eventAdvance(note('C', 4, 'q'))).toBeCloseTo(2.6);
+    expect(eventAdvance(note('C', 4, 'q', true))).toBeCloseTo(3.0);
+    expect(eventAdvance(rest('w'))).toBeCloseTo(4.6);
   });
 });
 
@@ -19,7 +19,7 @@ describe('measureWidth', () => {
       '4/4',
     );
     if (!result.ok) throw new Error('fixture invalid');
-    expect(measureWidth(result.value[0])).toBeCloseTo(1.0 + 2.4 + 2.4 + 3.2 + 0.4);
+    expect(measureWidth(result.value[0])).toBeCloseTo(0.8 + 2.6 + 2.6 + 3.4 + 0.3);
   });
 });
 
