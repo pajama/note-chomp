@@ -1,0 +1,11 @@
+dist
+node_modules
+playwright-report
+test-results
+art-concepts
+docs
+coverage
+package-lock.json
+ape-docs.json
+*.abc
+**/__snapshots__

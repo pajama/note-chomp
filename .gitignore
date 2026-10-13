@@ -1,4 +1,22 @@
+# secrets
 ape.key
 .env
 .env.*
 !.env.example
+
+# deps / build
+node_modules/
+dist/
+
+# test output
+coverage/
+playwright-report/
+test-results/
+
+# generated art explorations (review, then copy chosen assets into src/)
+art-concepts/
+
+# local reference material
+ape-docs.json
+
+.DS_Store
