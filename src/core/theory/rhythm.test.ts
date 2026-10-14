@@ -4,6 +4,7 @@ import {
   durationName,
   durationNameWithArticle,
   eventUnits,
+  fillUnits,
   formatBeats,
   measureUnits,
   splitIntoMeasures,
@@ -106,5 +107,44 @@ describe('splitIntoMeasures', () => {
     expect(result.error.message).toBe(
       'Measure 1: a whole note is longer than a whole measure of 3/4.',
     );
+  });
+});
+
+describe('fillUnits', () => {
+  const L = (duration: 'w' | 'h' | 'q' | 'e', dotted = false) => ({ duration, dotted });
+
+  it('uses the largest supported lengths first, never a dotted eighth', () => {
+    expect(fillUnits(16)).toEqual([L('w')]);
+    expect(fillUnits(14)).toEqual([L('h', true), L('e')]);
+    expect(fillUnits(10)).toEqual([L('h'), L('e')]);
+    expect(fillUnits(6)).toEqual([L('q', true)]);
+    expect(fillUnits(2)).toEqual([L('e')]);
+    expect(fillUnits(0)).toEqual([]);
+  });
+
+  it('repeats a preferred length while it fits, then fills the rest largest-first', () => {
+    expect(fillUnits(2, L('e'))).toEqual([L('e')]);
+    expect(fillUnits(12, L('q'))).toEqual([L('q'), L('q'), L('q')]);
+    expect(fillUnits(14, L('e'))).toEqual(Array.from({ length: 7 }, () => L('e')));
+    expect(fillUnits(2, L('q', true))).toEqual([L('e')]);
+    expect(fillUnits(10, L('q'))).toEqual([L('q'), L('q'), L('e')]);
+  });
+
+  it('covers every shortening from the spec (freed units, new length)', () => {
+    // q→e, h→q, w→q, w→e, h→q., h.→h, q.→q, h.→q
+    expect(fillUnits(2, L('e'))).toEqual([L('e')]);
+    expect(fillUnits(4, L('q'))).toEqual([L('q')]);
+    expect(fillUnits(12, L('q'))).toEqual([L('q'), L('q'), L('q')]);
+    expect(fillUnits(14, L('e'))).toHaveLength(7);
+    expect(fillUnits(2, L('q', true))).toEqual([L('e')]);
+    expect(fillUnits(4, L('h'))).toEqual([L('q')]);
+    expect(fillUnits(2, L('q'))).toEqual([L('e')]);
+    expect(fillUnits(8, L('q'))).toEqual([L('q'), L('q')]);
+  });
+
+  it('returns undefined for lengths that cannot be written', () => {
+    expect(fillUnits(3)).toBeUndefined();
+    expect(fillUnits(1.5)).toBeUndefined();
+    expect(fillUnits(-2)).toBeUndefined();
   });
 });

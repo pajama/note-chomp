@@ -37,6 +37,41 @@ export function unitsToDuration(
   return found ? { ...found } : undefined;
 }
 
+export interface Length {
+  duration: Duration;
+  dotted: boolean;
+}
+
+/** Largest first; dotted eighths are never used. */
+const FILL_CHUNKS: [number, Length][] = [
+  [16, { duration: 'w', dotted: false }],
+  [12, { duration: 'h', dotted: true }],
+  [8, { duration: 'h', dotted: false }],
+  [6, { duration: 'q', dotted: true }],
+  [4, { duration: 'q', dotted: false }],
+  [2, { duration: 'e', dotted: false }],
+];
+
+/**
+ * Lengths that add up to exactly `units`: `repeat` as many times as it fits (if given),
+ * then the largest supported lengths first. Undefined if `units` can't be written.
+ */
+export function fillUnits(units: number, repeat?: Length): Length[] | undefined {
+  if (units < 0) return undefined;
+  const lengths: Length[] = [];
+  let left = units;
+  const chunks: [number, Length][] = repeat
+    ? [[eventUnits(repeat), repeat], ...FILL_CHUNKS]
+    : FILL_CHUNKS;
+  for (const [size, length] of chunks) {
+    while (left >= size) {
+      lengths.push({ ...length });
+      left -= size;
+    }
+  }
+  return left === 0 ? lengths : undefined;
+}
+
 export function durationName(e: {
   kind: 'note' | 'rest';
   duration: Duration;

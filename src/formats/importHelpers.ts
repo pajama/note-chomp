@@ -1,6 +1,7 @@
 import { rest } from '../core/model/factories';
 import type { Pitch, Rest } from '../core/model/types';
 import { diatonicIndex, RANGE_LABEL } from '../core/theory/pitch';
+import { fillUnits } from '../core/theory/rhythm';
 
 /** Messages and helpers shared by the ABC and MusicXML importers. */
 
@@ -28,24 +29,7 @@ export const lengthError = (m: number, what: Pitch | 'rest') =>
 export const dottedEighthError = (m: number, kind: 'note' | 'rest') =>
   `Measure ${m}: dotted eighth ${kind}s aren't supported yet.`;
 
-const REST_CHUNKS: [number, Rest][] = [
-  [16, rest('w')],
-  [12, rest('h', true)],
-  [8, rest('h')],
-  [6, rest('q', true)],
-  [4, rest('q')],
-  [2, rest('e')],
-];
-
 /** The fewest rests (largest first) that add up to `units`, or undefined if that can't be done. */
 export function fillRests(units: number): Rest[] | undefined {
-  const rests: Rest[] = [];
-  let left = units;
-  for (const [chunk, r] of REST_CHUNKS) {
-    while (left >= chunk) {
-      rests.push({ ...r });
-      left -= chunk;
-    }
-  }
-  return left === 0 ? rests : undefined;
+  return fillUnits(units)?.map((l) => rest(l.duration, l.dotted));
 }
