@@ -35,7 +35,8 @@ export function layoutSong(
   const paper = PAPER_SIZES_MM[options.paper];
   const s = options.staffSpaceMm;
   const left = PAGE_MARGIN_MM;
-  const width = paper.width - 2 * PAGE_MARGIN_MM;
+  const pageWidth = options.sheetWidthMm ?? paper.width;
+  const width = pageWidth - 2 * PAGE_MARGIN_MM;
 
   const headerSpaces =
     METRICS.monsterWidth + METRICS.monsterGap + (options.showTrebleClef ? METRICS.clefWidth : 0);
@@ -75,7 +76,7 @@ export function layoutSong(
     const items: LayoutItem[] = [
       labelItem(
         title,
-        paper.width / 2,
+        pageWidth / 2,
         PAGE_MARGIN_MM + TITLE_FONT_MM,
         TITLE_FONT_MM,
         NEUTRAL.ink,
@@ -93,7 +94,7 @@ export function layoutSong(
         labels: options.noteLabels === 'solfege' ? 'solfege' : 'letter',
       });
     }
-    pages.push({ index: pageIndex, width: paper.width, height: paper.height, items, systems });
+    pages.push({ index: pageIndex, width: pageWidth, height: paper.height, items, systems });
   }
   return { pages };
 }

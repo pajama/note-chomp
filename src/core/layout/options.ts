@@ -11,6 +11,8 @@ export interface RenderOptions {
   showLegend: boolean;
   showTrebleClef: boolean;
   showMeasureNumbers: boolean;
+  /** Editor only: lay out systems on a page this wide instead of the paper width. */
+  sheetWidthMm?: number;
 }
 
 export const STAFF_SIZES = { large: 6.5, jumbo: 9 } as const;

@@ -91,4 +91,37 @@ describe('layoutSong', () => {
   it('is deterministic', () => {
     expect(layoutSong(song(hotCrossBuns))).toEqual(layoutSong(song(hotCrossBuns)));
   });
+
+  describe('a narrower editor sheet (sheetWidthMm)', () => {
+    const narrow = { ...DEFAULT_RENDER_OPTIONS, sheetWidthMm: 120 };
+
+    it('lays the page out that wide, on more systems', () => {
+      const tune = song(wholeNotes(8).concat(hotCrossBuns));
+      const wide = layoutSong(tune);
+      const result = layoutSong(tune, narrow);
+      expect(result.pages[0].width).toBe(120);
+      const count = (r: typeof result) => r.pages.reduce((n, p) => n + p.systems.length, 0);
+      expect(count(result)).toBeGreaterThan(count(wide));
+      expect(result.pages[0].items[0]).toMatchObject({ x: 60 });
+      for (const page of result.pages) {
+        for (const system of page.systems)
+          expect(system.endX).toBeLessThanOrEqual(120 - 12.7 + 0.001);
+      }
+    });
+
+    it('still places a measure wider than the sheet, alone on its system', () => {
+      const eighths = Array.from({ length: 8 }, () => note('C', 4, 'e'));
+      const result = layoutSong(song([...eighths, ...eighths]), narrow);
+      expect(result.pages[0].systems.map((s) => s.firstMeasure)).toEqual([1, 2]);
+      const threeFour = {
+        ...song(Array.from({ length: 6 }, () => note('D', 4, 'e'))),
+        timeSignature: '3/4' as const,
+      };
+      expect(() => layoutSong(threeFour, narrow)).not.toThrow();
+    });
+
+    it('is not part of the default (print) options', () => {
+      expect('sheetWidthMm' in DEFAULT_RENDER_OPTIONS).toBe(false);
+    });
+  });
 });
