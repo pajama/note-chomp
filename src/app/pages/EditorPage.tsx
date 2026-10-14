@@ -6,12 +6,13 @@ import { TIME_SIGNATURES, type Pitch, type Song, type TimeSignature } from '../.
 import { isInRange, toNoteName } from '../../core/theory/pitch';
 import { clearDraft, saveDraft } from '../../persistence/draft';
 import { DurationPicker } from '../components/DurationPicker';
-import { EditorSheet } from '../components/EditorSheet';
+import { EDITOR_OPTIONS, EditorSheet } from '../components/EditorSheet';
 import { FruitKeyboard } from '../components/FruitKeyboard';
 import { HelpPopover } from '../components/HelpPopover';
 import { PlaybackControls } from '../components/PlaybackControls';
 import { Toast } from '../components/Toast';
 import { useEditorKeyboard } from '../hooks/useEditorKeyboard';
+import { useNoteDrag } from '../hooks/useNoteDrag';
 import { usePlayback } from '../hooks/usePlayback';
 import { useToast } from '../hooks/useToast';
 import { navigate, setNavigationGuard } from '../router';
@@ -130,7 +131,12 @@ function EditorWorkspace({
   const onRest = () =>
     dispatch(state.selection === null ? { type: 'insertRest' } : { type: 'restSelected' });
 
-  const onNotePointerDown = useCallback((index: number) => dispatch({ type: 'select', index }), []);
+  const onNotePointerDown = useNoteDrag({
+    events: state.song.events,
+    dispatch,
+    preview: playback.preview,
+    staffSpaceMm: EDITOR_OPTIONS.staffSpaceMm,
+  });
   const onGapClick = useCallback((index: number) => dispatch({ type: 'setCursor', index }), []);
   const onBackgroundPointerDown = useCallback(() => dispatch({ type: 'clearSelection' }), []);
 
