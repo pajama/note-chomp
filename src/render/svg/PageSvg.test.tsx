@@ -45,6 +45,8 @@ describe('PageSvg', () => {
       <PageSvg page={page} cursor={{ pageIndex: 0, x: 50, staffTop: 40, spacing: 6.5 }} />,
     );
     expect(withCursor).toContain('data-kind="cursor"');
+    expect(withCursor).toContain('class="cursor-blink"');
+    expect(withCursor).not.toContain('<animate');
   });
 
   it('renders without a legend when disabled', () => {

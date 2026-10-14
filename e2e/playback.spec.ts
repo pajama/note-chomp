@@ -137,3 +137,39 @@ test('moving the tempo slider while playing carries on from the current note at 
   // Seven quarter notes at 160 bpm take about 2.6 s; at 60 bpm they would take 7 s.
   await expect(playButton(page)).toBeVisible({ timeout: 4000 });
 });
+
+test('with reduced motion the cursor, the measure flash and the playing halo keep still', async ({
+  page,
+}) => {
+  const animation = (selector: string) =>
+    page
+      .locator(selector)
+      .first()
+      .evaluate((el) => getComputedStyle(el).animationName);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await openEditor(page, 'cdefgabc');
+  expect(await animation('[data-kind="cursor"]')).toBe('none');
+
+  // A quarter note squeezed in before a whole note pushes it out of line: the measure flashes.
+  await page.getByRole('button', { name: 'Whole', exact: true }).click();
+  await page.keyboard.press('c');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('3');
+  await page.keyboard.press('d');
+  await expect(page.locator('[data-kind="measure-flash"]')).toHaveCount(1);
+  expect(await animation('[data-kind="measure-flash"]')).toBe('none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  expect(await animation('[data-kind="measure-flash"]')).not.toBe('none');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  await page.getByLabel('Tempo').fill('60');
+  await playButton(page).click();
+  await expect(halo(page)).toHaveCount(1);
+  expect(await animation('[data-kind="playing-halo"]')).toBe('none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  expect(await animation('[data-kind="playing-halo"]')).not.toBe('none');
+  await stopButton(page).click();
+  await page.keyboard.press('Escape');
+  expect(await animation('[data-kind="cursor"]')).not.toBe('none');
+});

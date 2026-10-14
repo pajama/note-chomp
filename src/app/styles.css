@@ -317,7 +317,23 @@ textarea {
 .playing-halo {
   transform-box: fill-box;
   transform-origin: center;
-  animation: playing-pop 0.25s ease-out;
+}
+/* Motion only for people who haven't asked their system for less of it. */
+@media (prefers-reduced-motion: no-preference) {
+  .playing-halo {
+    animation: playing-pop 0.25s ease-out;
+  }
+  .measure-flash {
+    animation: measure-flash 1.2s ease-out forwards;
+  }
+  .cursor-blink {
+    animation: cursor-blink 1.2s ease-in-out infinite;
+  }
+}
+@keyframes cursor-blink {
+  50% {
+    opacity: 0.2;
+  }
 }
 @keyframes playing-pop {
   from {
@@ -326,9 +342,6 @@ textarea {
   to {
     transform: scale(1);
   }
-}
-.measure-flash {
-  animation: measure-flash 1.2s ease-out forwards;
 }
 @keyframes measure-flash {
   from {

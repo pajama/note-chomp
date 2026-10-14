@@ -34,6 +34,7 @@ export function PageSvg({ page, cursor, onEventClick, className }: PageSvgProps)
       {cursor && cursor.pageIndex === page.index && (
         <line
           data-kind="cursor"
+          className="cursor-blink"
           x1={cursor.x}
           x2={cursor.x}
           y1={cursor.staffTop - 1.5 * cursor.spacing}
@@ -41,9 +42,7 @@ export function PageSvg({ page, cursor, onEventClick, className }: PageSvgProps)
           stroke="#FF4081"
           strokeWidth={0.18 * cursor.spacing}
           strokeLinecap="round"
-        >
-          <animate attributeName="opacity" values="1;0.2;1" dur="1.2s" repeatCount="indefinite" />
-        </line>
+        />
       )}
     </svg>
   );

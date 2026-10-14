@@ -63,6 +63,12 @@ describe('SheetSvg', () => {
     expect(render({ cursor })).toContain('data-kind="cursor"');
   });
 
+  it('blinks the cursor with CSS (so reduced motion can stop it), not SMIL', () => {
+    const svg = render({ cursor: cursorPosition(layout, 2, s) });
+    expect(svg).toContain('class="cursor-blink"');
+    expect(svg).not.toContain('<animate');
+  });
+
   it('flashes a measure', () => {
     expect(render({ flash: measureBox(layout, 1) })).toContain('data-kind="measure-flash"');
   });
