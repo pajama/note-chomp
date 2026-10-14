@@ -30,8 +30,12 @@ test('swiping up over a note that is not selected scrolls the sheet and leaves t
   page,
 }) => {
   await openEditor(page, 'cdefgabc'.repeat(5));
-  await page.getByTestId('song-pages').evaluate((el) => (el.scrollTop = 0));
-  await expect.poll(() => scrollTop(page)).toBe(0);
+  // Back to the top, once the smooth scroll that followed the typing has finished.
+  await expect(async () => {
+    await page.getByTestId('song-pages').evaluate((el) => (el.scrollTop = 0));
+    await page.waitForTimeout(200);
+    expect(await scrollTop(page)).toBe(0);
+  }).toPass();
   const { x, y } = await center(page, 2);
   await swipe(page, x, y, y - 200);
   await expect.poll(() => scrollTop(page)).toBeGreaterThan(50);
