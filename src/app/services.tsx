@@ -1,9 +1,11 @@
 import { createContext, useContext, type ReactNode } from 'react';
+import type { NotePlayer } from '../audio/NotePlayer';
 import type { KeyValueStorage, SongRepository } from '../persistence/SongRepository';
 
 export interface Services {
   repository: SongRepository;
   storage: KeyValueStorage;
+  player: NotePlayer;
 }
 
 const ServicesContext = createContext<Services | null>(null);

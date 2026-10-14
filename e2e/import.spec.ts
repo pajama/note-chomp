@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 const ABC = 'X:1\nT:Pasted Tune\nM:4/4\nL:1/4\nK:C\nE D C2 | E D C2 |]\nw: hot cross buns\n';
 

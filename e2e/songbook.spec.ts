@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 test('lists the eight starter songs and an empty My songs section', async ({ page }) => {
   await page.goto('/');

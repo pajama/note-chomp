@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
+import { createNotePlayer } from './app/audio';
 import { ErrorBoundary } from './app/components/ErrorBoundary';
 import { ServicesProvider, type Services } from './app/services';
 import './app/styles.css';
@@ -8,7 +9,11 @@ import { LocalStorageSongRepository } from './persistence/LocalStorageSongReposi
 import { safeLocalStorage } from './persistence/memoryStorage';
 
 const storage = safeLocalStorage();
-const services: Services = { repository: new LocalStorageSongRepository(storage), storage };
+const services: Services = {
+  repository: new LocalStorageSongRepository(storage),
+  storage,
+  player: createNotePlayer(window),
+};
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './fixtures';
 
 const fruits = (page: Page) => page.getByTestId('song-pages').locator('[data-kind="fruit"]');
 
