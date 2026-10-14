@@ -146,6 +146,30 @@ for (const c of CASES) {
       expect(await windowScroll(page)).toEqual({ x: 0, y: 0 });
     });
 
+    test('every length button, Rest and Delete show without scrolling the row', async ({
+      page,
+    }) => {
+      await open(page, c);
+      await expect(page.getByRole('button', { name: 'Delete note' })).toBeVisible();
+      const clipped = await page.evaluate(() =>
+        [...document.querySelectorAll('.duration-picker button, .edit-actions button')]
+          .map((b) => ({
+            name: b.getAttribute('aria-label') ?? b.textContent,
+            r: b.getBoundingClientRect(),
+            box: b.parentElement!.getBoundingClientRect(),
+          }))
+          .filter(
+            ({ r, box }) =>
+              r.left < Math.max(0, box.left) - 0.5 ||
+              r.right > Math.min(window.innerWidth, box.right) + 0.5 ||
+              r.top < box.top - 0.5 ||
+              r.bottom > Math.min(window.innerHeight, box.bottom) + 0.5,
+          )
+          .map(({ name, r }) => `${name} [${r.left.toFixed(0)}, ${r.right.toFixed(0)}]`),
+      );
+      expect(clipped, `row and screen end at ${c.width}`).toEqual([]);
+    });
+
     test('help opens fully on screen and a tap outside closes it', async ({ page }) => {
       await open(page, c);
       await page.getByRole('button', { name: 'Help' }).tap();
@@ -175,7 +199,7 @@ for (const c of CASES) {
   });
 }
 
-test('phone portrait: help sits beside Play, and the length row scrolls on its own', async ({
+test('phone portrait: help sits beside Play, and a swipe on the length row leaves the page still', async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== 'iphone', 'iphone only');
@@ -202,16 +226,11 @@ test('small phone: Play and the length row stay inside the screen', async ({ pag
     expect(r.left).toBeGreaterThanOrEqual(0);
     expect(r.right).toBeLessThanOrEqual(320);
   }
-  // Every length button can be scrolled to.
-  const reachable = await page.locator('.duration-picker').evaluate((row) => {
-    const box = row.getBoundingClientRect();
-    const extra = row.scrollWidth - row.clientWidth;
-    return [...row.querySelectorAll('button')].every((b) => {
-      const r = b.getBoundingClientRect();
-      return r.left >= box.left - 0.5 && r.right <= box.right + extra + 0.5;
-    });
-  });
-  expect(reachable).toBe(true);
+  // The length row never needs scrolling sideways.
+  const scrolls = await page
+    .locator('.duration-picker')
+    .evaluate((row) => row.scrollWidth > row.clientWidth + 0.5);
+  expect(scrolls).toBe(false);
 });
 
 test('phone landscape: the side dock fits without scrolling', async ({ page }, testInfo) => {

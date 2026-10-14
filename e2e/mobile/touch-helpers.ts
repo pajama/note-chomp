@@ -125,9 +125,8 @@ export async function expectNoHorizontalOverflow(page: Page): Promise<void> {
       for (const el of document.querySelectorAll(`${bar}, ${bar} *`)) {
         const r = el.getBoundingClientRect();
         if (r.width === 0 && r.height === 0) continue;
-        // The length row may scroll sideways inside itself; the help popover is checked separately.
-        if (el.parentElement?.closest('.duration-picker') || el.closest('.sr-only, #editor-help'))
-          continue;
+        // The help popover is checked separately.
+        if (el.closest('.sr-only, #editor-help')) continue;
         if (r.left < 0 || r.right > w + 0.5) {
           out.push(`${el.tagName}.${el.className} [${r.left.toFixed(1)}, ${r.right.toFixed(1)}]`);
         }

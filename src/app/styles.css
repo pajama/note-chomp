@@ -576,14 +576,15 @@ textarea {
     max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   }
 }
-/* Phones, portrait and landscape: one compact dock grid. Play and help share the first row, the
-   lengths scroll sideways in one row, then the octave buttons and the keys. */
+/* Phones, portrait and landscape: one compact dock grid. Play and help share the first row, then
+   the lengths, then the octave buttons with Rest and Delete beside them, then the keys. Nothing
+   scrolls sideways: Delete is the only way to delete on touch, so it must always show. */
 @media (max-width: 600px), (orientation: landscape) and (max-height: 500px) {
   .editor-dock {
     gap: 6px;
     padding-top: 8px;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: 'play help' 'len len' 'oct oct' 'keys keys';
+    grid-template-areas: 'play help' 'len len' 'oct edit' 'keys keys';
   }
   .editor-dock .dock-row,
   .editor-dock .fruit-keyboard-wrap {
@@ -595,27 +596,30 @@ textarea {
   }
   .editor-dock .help {
     grid-area: help;
+    justify-self: end;
     margin: 0;
   }
   .editor-dock .duration-picker {
     grid-area: len;
-    flex-wrap: nowrap;
-    overflow-x: auto;
     gap: 6px;
-    overflow-y: hidden;
-    min-height: 44px;
-    touch-action: pan-x;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
+  }
+  .editor-dock .edit-actions {
+    grid-area: edit;
+    flex-wrap: nowrap;
+    gap: 6px;
   }
   .editor-dock .duration-picker button {
-    flex: none;
+    flex: 1 0 auto;
+    padding-inline: 10px;
+  }
+  .editor-dock .edit-actions button {
     padding-inline: 12px;
   }
   .editor-dock .octave-controls {
     grid-area: oct;
     margin: 0;
-    justify-content: center;
+    gap: 6px;
+    justify-content: space-evenly;
   }
   .editor-dock .fruit-keyboard {
     grid-area: keys;
@@ -694,7 +698,7 @@ textarea {
   }
   .editor {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) clamp(280px, 42vw, 400px);
+    grid-template-columns: minmax(0, 1fr) clamp(296px, 42vw, 400px);
     grid-template-rows: auto auto minmax(0, 1fr);
     grid-template-areas: 'top top' 'offer offer' 'sheet dock';
   }
@@ -742,14 +746,34 @@ textarea {
     bottom: max(8px, env(safe-area-inset-bottom));
   }
 }
+/* Narrow docks (small phones, the landscape side dock): tighter controls so the lengths stay on
+   one row and the octave buttons, Rest and Delete share the next. */
+@media (max-width: 360px), (orientation: landscape) and (max-height: 500px) and (max-width: 952px) {
+  .editor-dock .duration-picker,
+  .editor-dock .edit-actions {
+    gap: 4px;
+  }
+  .editor-dock .duration-picker button,
+  .editor-dock .edit-actions button,
+  .editor-dock .octave-controls {
+    font-size: 0.9rem;
+  }
+  .editor-dock .duration-picker button,
+  .editor-dock .edit-actions button {
+    padding-inline: 6px;
+  }
+  .editor-dock .edit-actions button {
+    min-width: 44px;
+  }
+}
 /* Touch tablets in landscape: one row of controls above the keys, so the sheet gets the room.
    Coarse pointers only, so laptops keep the desktop dock. */
 @media (orientation: landscape) and (min-width: 1000px) and (max-height: 900px) and (pointer: coarse) {
   .editor-dock {
     gap: 8px;
     padding-top: 8px;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    grid-template-areas: 'play len oct help' 'keys keys keys keys';
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas: 'play len edit oct help' 'keys keys keys keys keys';
     align-items: center;
   }
   .editor-dock .dock-row,
@@ -762,11 +786,17 @@ textarea {
   .editor-dock .duration-picker {
     grid-area: len;
     flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
+    gap: 8px;
   }
-  .editor-dock .duration-picker button {
+  .editor-dock .edit-actions {
+    grid-area: edit;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .editor-dock .duration-picker button,
+  .editor-dock .edit-actions button {
     flex: none;
+    padding-inline: 12px;
   }
   .editor-dock .octave-controls {
     grid-area: oct;

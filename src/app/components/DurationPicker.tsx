@@ -29,46 +29,52 @@ export function DurationPicker({
 }: DurationPickerProps) {
   // A pressed Dot is never disabled, so it can always be switched off.
   const dotReason = dotted ? null : dotUnavailable(duration, timeSignature);
+  // Rest and Delete are their own group so phone docks can put them beside the octave buttons,
+  // where they always show instead of being pushed off the end of the length row.
   return (
-    <div className="toolbar duration-picker" role="group" aria-label="Note length">
-      {OPTIONS.map((o) => {
-        const tooLong = durationTooLong(o.duration, timeSignature);
-        return (
-          <button
-            key={o.duration}
-            type="button"
-            className="secondary"
-            aria-pressed={duration === o.duration}
-            disabled={tooLong}
-            title={tooLong ? `Too long for ${timeSignature}` : o.hint}
-            onClick={() => onDuration(o.duration)}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-      <button
-        type="button"
-        className="secondary"
-        aria-pressed={dotted}
-        disabled={dotReason !== null}
-        title={dotReason ?? 'Dotted: 1½ times as long (key .)'}
-        onClick={onToggleDot}
-      >
-        Dot
-      </button>
-      <button type="button" className="secondary" title="Add a rest (key R)" onClick={onRest}>
-        Rest
-      </button>
-      <button
-        type="button"
-        className="secondary"
-        aria-label="Delete note"
-        title="Delete (Backspace)"
-        onClick={onBackspace}
-      >
-        ⌫
-      </button>
-    </div>
+    <>
+      <div className="toolbar duration-picker" role="group" aria-label="Note length">
+        {OPTIONS.map((o) => {
+          const tooLong = durationTooLong(o.duration, timeSignature);
+          return (
+            <button
+              key={o.duration}
+              type="button"
+              className="secondary"
+              aria-pressed={duration === o.duration}
+              disabled={tooLong}
+              title={tooLong ? `Too long for ${timeSignature}` : o.hint}
+              onClick={() => onDuration(o.duration)}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          className="secondary"
+          aria-pressed={dotted}
+          disabled={dotReason !== null}
+          title={dotReason ?? 'Dotted: 1½ times as long (key .)'}
+          onClick={onToggleDot}
+        >
+          Dot
+        </button>
+      </div>
+      <div className="toolbar edit-actions" role="group" aria-label="Rest and delete">
+        <button type="button" className="secondary" title="Add a rest (key R)" onClick={onRest}>
+          Rest
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          aria-label="Delete note"
+          title="Delete (Backspace)"
+          onClick={onBackspace}
+        >
+          ⌫
+        </button>
+      </div>
+    </>
   );
 }
