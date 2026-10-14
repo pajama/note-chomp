@@ -1,6 +1,14 @@
 import { createEmptySong, note, rest } from '../model/factories';
-import type { Duration, MusicEvent, Octave, Pitch, Song, TimeSignature } from '../model/types';
-import { isInRange, RANGE_LABEL } from '../theory/pitch';
+import type {
+  Duration,
+  MusicEvent,
+  Note,
+  Octave,
+  Pitch,
+  Song,
+  TimeSignature,
+} from '../model/types';
+import { clampedStepPitch, isInRange, RANGE_LABEL, stepPitch } from '../theory/pitch';
 import { durationNameWithArticle, splitIntoMeasures, type MeasureError } from '../theory/rhythm';
 
 export const HISTORY_LIMIT = 100;
@@ -15,6 +23,13 @@ export interface EditorSnapshot {
   selection: number | null;
 }
 
+/** A pointer drag in progress: where the note started and the state to undo back to. */
+export interface DragState {
+  origin: Note;
+  before: EditorSnapshot;
+  wasDirty: boolean;
+}
+
 export interface EditorState extends EditorSnapshot {
   duration: Duration;
   dotted: boolean;
@@ -25,6 +40,7 @@ export interface EditorState extends EditorSnapshot {
   /** The measure the current error is about (for a flash on the staff), if known. */
   errorMeasure: number | null;
   dirty: boolean;
+  drag: DragState | null;
 }
 
 export type EditorAction =
@@ -36,6 +52,10 @@ export type EditorAction =
   | { type: 'select'; index: number }
   | { type: 'clearSelection' }
   | { type: 'navigate'; delta: number }
+  | { type: 'changeSelectedPitch'; pitch: Pitch; baseOctave: 4 | 5 }
+  | { type: 'nudgeSelected'; steps: number }
+  | { type: 'dragSelected'; steps: number }
+  | { type: 'endDrag' }
   | { type: 'setDuration'; duration: Duration }
   | { type: 'toggleDotted' }
   | { type: 'shiftOctave'; delta: 1 | -1 }
@@ -60,6 +80,7 @@ export function createEditorState(song: Song = createEmptySong()): EditorState {
     error: null,
     errorMeasure: null,
     dirty: false,
+    drag: null,
   };
 }
 
@@ -97,6 +118,7 @@ function accept(
     error: null,
     errorMeasure: null,
     dirty: true,
+    drag: null,
   };
 }
 
@@ -138,6 +160,21 @@ function deleteBackward(state: EditorState): EditorState {
 
 function rangeMessage(pitch: Pitch, octave: number): string {
   return `That ${pitch} is too ${octave < 4 ? 'low' : 'high'} — Note Chomp notes go from the G below middle C up to high C (${RANGE_LABEL}).`;
+}
+
+function selectedEvent(state: EditorState): MusicEvent | undefined {
+  return state.selection === null ? undefined : state.song.events[state.selection];
+}
+
+function withSelected(state: EditorState, event: MusicEvent): Song {
+  const events = [...state.song.events];
+  if (state.selection !== null) events[state.selection] = event;
+  return { ...state.song, events };
+}
+
+function sameEvent(a: MusicEvent, b: MusicEvent): boolean {
+  if (a.kind !== b.kind || a.duration !== b.duration || !!a.dotted !== !!b.dotted) return false;
+  return a.kind === 'rest' || (b.kind === 'note' && a.pitch === b.pitch && a.octave === b.octave);
 }
 
 function select(state: EditorState, index: number): EditorState {
@@ -184,6 +221,56 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (next % 2 === 1) return select(state, (next - 1) / 2);
       return { ...state, selection: null, cursor: next / 2, error: null, errorMeasure: null };
     }
+    case 'changeSelectedPitch': {
+      const target = selectedEvent(state);
+      if (!target) return state;
+      const octave = action.baseOctave + state.octaveShift;
+      if (!isInRange(action.pitch, octave))
+        return reject(state, rangeMessage(action.pitch, octave));
+      const changed = note(action.pitch, octave as Octave, target.duration, target.dotted ?? false);
+      if (sameEvent(changed, target)) return { ...state, error: null, errorMeasure: null };
+      return accept(state, withSelected(state, changed), state.cursor, state.selection);
+    }
+    case 'nudgeSelected': {
+      const target = selectedEvent(state);
+      if (!target || target.kind !== 'note') return state;
+      const moved = stepPitch(target.pitch, target.octave, action.steps);
+      if (!moved) return state;
+      const changed = note(moved.pitch, moved.octave, target.duration, target.dotted ?? false);
+      return accept(state, withSelected(state, changed), state.cursor, state.selection);
+    }
+    case 'dragSelected': {
+      // Every step is measured from where the drag started; history waits for endDrag.
+      const target = selectedEvent(state);
+      if (!target || target.kind !== 'note') return state;
+      const drag = state.drag ?? { origin: target, before: snapshot(state), wasDirty: state.dirty };
+      const { origin } = drag;
+      const moved = clampedStepPitch(origin.pitch, origin.octave, action.steps);
+      const changed = note(moved.pitch, moved.octave, origin.duration, origin.dotted ?? false);
+      return {
+        ...state,
+        song: withSelected(state, changed),
+        drag,
+        error: null,
+        errorMeasure: null,
+        dirty: drag.wasDirty || !sameEvent(changed, origin),
+      };
+    }
+    case 'endDrag': {
+      if (!state.drag) return state;
+      const { origin, before, wasDirty } = state.drag;
+      const current = selectedEvent(state);
+      if (!current || sameEvent(current, origin)) {
+        return { ...state, song: before.song, dirty: wasDirty, drag: null };
+      }
+      return {
+        ...state,
+        past: [...state.past, before].slice(-HISTORY_LIMIT),
+        future: [],
+        dirty: true,
+        drag: null,
+      };
+    }
     case 'setDuration':
       // dotted eighths are not offered
       return {
@@ -217,6 +304,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         error: null,
         errorMeasure: null,
         dirty: true,
+        drag: null,
       };
     }
     case 'redo': {
@@ -232,6 +320,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         error: null,
         errorMeasure: null,
         dirty: true,
+        drag: null,
       };
     }
     case 'load':
