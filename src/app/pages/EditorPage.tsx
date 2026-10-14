@@ -4,6 +4,7 @@ import { createEmptySong } from '../../core/model/factories';
 import { newSongId } from '../../core/model/id';
 import { TIME_SIGNATURES, type Pitch, type Song, type TimeSignature } from '../../core/model/types';
 import { isInRange, toNoteName } from '../../core/theory/pitch';
+import { copyTitle } from '../../core/text';
 import { clearDraft, loadDraft, saveDraft } from '../../persistence/draft';
 import { DurationPicker } from '../components/DurationPicker';
 import { EDITOR_OPTIONS, EditorSheet } from '../components/EditorSheet';
@@ -57,7 +58,14 @@ export function EditorPage({ songId, onSavedAs }: EditorPageProps) {
     );
   }
   const initial = entry.builtin
-    ? { ...entry.song, id: newSongId(), title: `${entry.song.title} (my copy)` }
+    ? {
+        ...entry.song,
+        id: newSongId(),
+        title: copyTitle(
+          entry.song.title,
+          library.user.map((s) => s.title),
+        ),
+      }
     : entry.song;
   return (
     <EditorWorkspace

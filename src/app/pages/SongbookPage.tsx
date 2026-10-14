@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { newSongId } from '../../core/model/id';
 import type { Song } from '../../core/model/types';
-import { slugify } from '../../core/text';
+import { copyTitle, slugify } from '../../core/text';
 import { NOTECHOMP_EXTENSION, serializeSong } from '../../formats/notechomp/notechomp';
 import { FruitStrip } from '../components/FruitStrip';
 import { downloadText } from '../download';
@@ -31,7 +31,10 @@ export function SongbookPage() {
       const saved = await library.save({
         ...song,
         id: newSongId(),
-        title: `${song.title} (my copy)`,
+        title: copyTitle(
+          song.title,
+          library.user.map((s) => s.title),
+        ),
       });
       navigate({ name: 'edit', id: saved.id });
     } catch (e) {
