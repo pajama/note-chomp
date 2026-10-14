@@ -8,8 +8,10 @@ export interface PlaybackHandlers {
 /** Plays notes. Implementations: ToneNotePlayer (real piano), FakeNotePlayer (tests). */
 export interface NotePlayer {
   /**
-   * Fetch the audio code in the background (no sound, no AudioContext), so a later gesture can
-   * resume audio synchronously. Never throws.
+   * Fetch the audio code in the background (no sound yet), so a later gesture can resume audio
+   * synchronously. Never throws. The Tone player also creates its (suspended) AudioContext here,
+   * via Tone.getTransport() in loadTone: that is deliberate, because Tone.start() can only resume
+   * an existing context inside the user's gesture. Don't defer it to the first Play.
    */
   prefetch(): void;
   /** Idempotent; the first call loads the instrument. Rejects if audio is unavailable. */
