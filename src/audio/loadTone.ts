@@ -36,5 +36,6 @@ export async function loadTone(): Promise<ToneLike> {
       transport.cancel(0);
       draw.cancel(0);
     },
+    isRunning: () => Tone.getContext().state === 'running',
   };
 }

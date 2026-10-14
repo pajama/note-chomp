@@ -16,4 +16,6 @@ export interface ToneLike {
   startTransport(): void;
   /** Stop the transport and forget everything scheduled on it. */
   stopTransport(): void;
+  /** Whether the AudioContext is running (not suspended). */
+  isRunning(): boolean;
 }

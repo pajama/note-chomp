@@ -35,6 +35,7 @@ function fakeTone(options: { failSamples?: boolean; hangStart?: boolean } = {}) 
     stopTransport: vi.fn(() => {
       scheduled.length = 0;
     }),
+    isRunning: vi.fn(() => false),
   } satisfies ToneLike;
   /** Pretend the transport ran to the end: fire every scheduled callback at 100 + its offset. */
   const runTransport = () => [...scheduled].forEach((s) => s.callback(100 + s.seconds));
@@ -164,5 +165,63 @@ describe('ToneNotePlayer', () => {
     expect(loadTone).toHaveBeenCalledTimes(1);
     player.preview('E4');
     expect(sampler.played).toEqual([['E4', PREVIEW_SECONDS, undefined]]);
+  });
+});
+
+describe('ToneNotePlayer audio unlock (iOS: only touchend / click / keydown may resume audio)', () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it('resumes audio on the first touchend after prefetch, then stops listening', async () => {
+    const { tone } = fakeTone();
+    tone.isRunning.mockReturnValueOnce(false).mockReturnValue(true);
+    const target = new EventTarget();
+    const player = new ToneNotePlayer(async () => tone, '/s/', target);
+    player.prefetch();
+    await flush();
+    target.dispatchEvent(new Event('touchend'));
+    expect(tone.start).toHaveBeenCalledTimes(1);
+    await flush();
+    target.dispatchEvent(new Event('touchend'));
+    target.dispatchEvent(new Event('click'));
+    expect(tone.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps listening while the context is still suspended', async () => {
+    const { tone } = fakeTone();
+    const target = new EventTarget();
+    const player = new ToneNotePlayer(async () => tone, '/s/', target);
+    player.prefetch();
+    await flush();
+    target.dispatchEvent(new Event('keydown'));
+    await flush();
+    target.dispatchEvent(new Event('click'));
+    expect(tone.start.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('ignores a gesture before Tone has loaded, and unlocks on the next one', async () => {
+    const { tone } = fakeTone();
+    tone.isRunning.mockReturnValue(true);
+    let finish: (t: ToneLike) => void = () => undefined;
+    const target = new EventTarget();
+    const player = new ToneNotePlayer(
+      () => new Promise<ToneLike>((resolve) => (finish = resolve)),
+      '/s/',
+      target,
+    );
+    player.prefetch();
+    target.dispatchEvent(new Event('touchend'));
+    expect(tone.start).not.toHaveBeenCalled();
+    finish(tone);
+    await flush();
+    target.dispatchEvent(new Event('touchend'));
+    expect(tone.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing without a gesture target (no window: SSR, tests)', async () => {
+    const { tone } = fakeTone();
+    const player = new ToneNotePlayer(async () => tone, '/s/', null);
+    expect(() => player.prefetch()).not.toThrow();
+    await flush();
+    expect(tone.start).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,10 @@ export const SAMPLE_BASE_URL = `${import.meta.env.BASE_URL}samples/piano/`;
 /** Notes are released a touch early so repeated notes are heard as separate notes. */
 const LEGATO = 0.92;
 
+type GestureTarget = Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
+/** The only events iOS WebKit accepts as activation for AudioContext.resume(). */
+const UNLOCK_EVENTS = ['touchend', 'click', 'keydown'] as const;
+
 interface Ready {
   tone: ToneLike;
   sampler: SamplerLike;
@@ -37,13 +41,51 @@ export class ToneNotePlayer implements NotePlayer {
   /** Bumped by every play and stop, so a play still awaiting the load knows it was cancelled. */
   private token = 0;
 
+  private unlockArmed = false;
+
   constructor(
     private readonly loadToneApi: () => Promise<ToneLike> = loadTone,
     private readonly baseUrl: string = SAMPLE_BASE_URL,
+    /** Where to listen for the first gesture that may unlock audio; null without a window. */
+    private readonly gestureTarget: GestureTarget | null = typeof window === 'undefined'
+      ? null
+      : window,
   ) {}
 
   prefetch(): void {
     this.loadToneOnce().catch(() => undefined);
+    this.armUnlock();
+  }
+
+  /**
+   * iOS WebKit only lets touchend, click and keydown resume an AudioContext. The first touch is
+   * often a note tap or drag, which previews on pointerdown/move and so can't unlock audio; resume
+   * on the first real gesture instead, until the context is running.
+   */
+  private armUnlock(): void {
+    const target = this.gestureTarget;
+    if (!target || this.unlockArmed) return;
+    this.unlockArmed = true;
+    let done = false;
+    const onGesture = () => {
+      const tone = this.tone;
+      if (done || !tone) return; // Tone not imported yet: try again on the next gesture
+      // Synchronous start() inside the gesture; it may settle later, or never (iOS outside one).
+      tone.start().then(
+        () => {
+          if (tone.isRunning()) disarm();
+        },
+        () => undefined,
+      );
+      if (tone.isRunning()) disarm();
+    };
+    const disarm = () => {
+      done = true;
+      for (const type of UNLOCK_EVENTS) target.removeEventListener(type, onGesture, true);
+    };
+    for (const type of UNLOCK_EVENTS) {
+      target.addEventListener(type, onGesture, { capture: true, passive: true });
+    }
   }
 
   async load(): Promise<void> {
