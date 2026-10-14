@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { expect, test, type Page } from './fixtures';
+import { expect, openEditor, test, type Page } from './fixtures';
 
 async function downloadPdf(page: Page) {
   const [download] = await Promise.all([
@@ -48,4 +48,29 @@ test('a PDF error is shown on screen but not printed on paper', async ({ page })
   await expect(alert).toBeVisible();
   await page.emulateMedia({ media: 'print' });
   await expect(alert).toBeHidden();
+});
+
+test('printing straight from the editor prints the whole sheet, without the draft offer', async ({
+  page,
+}) => {
+  await openEditor(page, 'cdefgabc'.repeat(5));
+  await page.emulateMedia({ media: 'print' });
+  // No box around the sheet may clip it; only the page itself (the root) runs on to more paper.
+  const clipped = await page.locator('.sheet-svg').evaluate((svg) => {
+    const out: string[] = [];
+    for (let el = svg.parentElement; el && el !== document.documentElement; el = el.parentElement) {
+      if (el.scrollHeight > el.clientHeight + 1) {
+        out.push(`${el.className || el.tagName}: ${el.clientHeight} of ${el.scrollHeight}px`);
+      }
+    }
+    return out;
+  });
+  expect(clipped).toEqual([]);
+
+  await page.emulateMedia({ media: 'screen' });
+  await page.reload();
+  const offer = page.getByRole('group', { name: 'Unsaved draft' });
+  await expect(offer).toBeVisible();
+  await page.emulateMedia({ media: 'print' });
+  await expect(offer).toBeHidden();
 });

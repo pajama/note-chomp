@@ -460,3 +460,17 @@ textarea {
     margin-left: 0;
   }
 }
+/* Cmd/Ctrl+P from the editor: let the sheet grow onto as many pages as it needs. */
+@media print {
+  .app-editor {
+    height: auto;
+    overflow: visible;
+  }
+  .sheet-scroll {
+    overflow: visible;
+    padding: 0;
+  }
+  .sheet-svg {
+    box-shadow: none;
+  }
+}

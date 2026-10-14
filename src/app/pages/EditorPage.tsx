@@ -287,7 +287,7 @@ function EditorWorkspace({
       </div>
 
       {offer && (
-        <div className="draft-offer alert" role="group" aria-label="Unsaved draft">
+        <div className="draft-offer alert no-print" role="group" aria-label="Unsaved draft">
           <span>Pick up where you left off?</span>
           <button
             type="button"
