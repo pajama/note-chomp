@@ -22,3 +22,7 @@ export async function openEditor(page: Page, letters = '', hash = '/#/new') {
   for (const letter of letters) await page.keyboard.press(letter);
   await expect(fruits(page)).toHaveCount(before + letters.length);
 }
+
+/** The note column for event n (1-based), found by its accessible name. */
+export const noteButton = (page: Page, n: number) =>
+  page.getByRole('button', { name: new RegExp(`^Note ${n}:`) });
