@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setNavigationGuard, subscribeToRoute, currentHash } from './router';
+import {
+  confirmLeave,
+  currentHash,
+  setNavigationGuard,
+  subscribeToRoute,
+  type LeaveReason,
+} from './router';
 
 const hashChange = () =>
   new Promise<void>((resolve) =>
@@ -56,5 +62,28 @@ describe('navigation guard', () => {
     await hashChange();
     expect(guard).not.toHaveBeenCalled();
     expect(currentHash()).toBe('#/import');
+  });
+});
+
+describe('confirmLeave', () => {
+  it('says yes without a guard and asks the guard with the reason otherwise', () => {
+    expect(confirmLeave('new-song')).toBe(true);
+    const guard = vi.fn((reason: LeaveReason) => reason === 'navigate');
+    const remove = setNavigationGuard(guard);
+    expect(confirmLeave('new-song')).toBe(false);
+    expect(confirmLeave('navigate')).toBe(true);
+    expect(guard).toHaveBeenCalledWith('new-song');
+    remove();
+    expect(confirmLeave('new-song')).toBe(true);
+  });
+
+  it('passes "navigate" for hash changes', async () => {
+    const guard = vi.fn(() => true);
+    const cleanups = [subscribeToRoute(vi.fn()), setNavigationGuard(guard)];
+    window.location.hash = '#/import';
+    await hashChange();
+    expect(guard).toHaveBeenCalledWith('navigate');
+    cleanups.forEach((c) => c());
+    window.history.replaceState(null, '', '#/');
   });
 });

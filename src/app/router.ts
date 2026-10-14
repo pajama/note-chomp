@@ -44,11 +44,14 @@ export function navigate(route: Route): void {
   window.location.hash = routeToHash(route);
 }
 
+/** Why the guard is asked: leaving the page, or starting over on #/new ("New song" while already there). */
+export type LeaveReason = 'navigate' | 'new-song';
+
 /**
  * Asked before the app follows a hash change (a link, Back/Forward, or navigate()). Returning
  * false keeps the current page and puts its address back. One guard at a time: the editor.
  */
-export type NavigationGuard = () => boolean;
+export type NavigationGuard = (reason: LeaveReason) => boolean;
 
 let guard: NavigationGuard | undefined;
 let committedHash: string | undefined;
@@ -61,6 +64,11 @@ export function setNavigationGuard(next: NavigationGuard): () => void {
   };
 }
 
+/** Ask the current guard (if any) whether the page may be left for `reason`. */
+export function confirmLeave(reason: LeaveReason): boolean {
+  return guard ? guard(reason) : true;
+}
+
 /** The hash the app is showing — it lags window.location.hash until the guard has agreed. */
 export function currentHash(): string {
   return committedHash ?? window.location.hash;
@@ -69,7 +77,7 @@ export function currentHash(): string {
 function onHashChange(): void {
   const next = window.location.hash;
   if (next === committedHash) return;
-  if (guard && !guard()) {
+  if (guard && !guard('navigate')) {
     window.history.replaceState(window.history.state, '', committedHash || '#/');
     return;
   }

@@ -21,6 +21,7 @@ import { useServices } from '../services';
 import { messageOf, useSongLibrary, type SongLibrary } from '../useSongLibrary';
 
 export const LEAVE_UNSAVED_MESSAGE = 'Your song is not saved yet. Leave without saving it?';
+export const NEW_SONG_MESSAGE = "Start a new song? Your current one isn't saved.";
 /** How long the problem measure flashes after an error. */
 const FLASH_MS = 1200;
 
@@ -109,8 +110,15 @@ function EditorWorkspace({
     dirtyRef.current = state.dirty;
   }, [state.dirty]);
   useEffect(
-    () => setNavigationGuard(() => !dirtyRef.current || window.confirm(LEAVE_UNSAVED_MESSAGE)),
-    [],
+    () =>
+      setNavigationGuard((reason) => {
+        if (!dirtyRef.current) return true;
+        const newSong = reason === 'new-song';
+        const ok = window.confirm(newSong ? NEW_SONG_MESSAGE : LEAVE_UNSAVED_MESSAGE);
+        if (ok && newSong) clearDraft(storage);
+        return ok;
+      }),
+    [storage],
   );
 
   const previewPitch = (pitch: Pitch, baseOctave: 4 | 5) => {
@@ -188,16 +196,21 @@ function EditorWorkspace({
         <input
           type="text"
           aria-label="Song title"
+          placeholder="Name your song"
           maxLength={100}
           value={state.song.title}
           onChange={(e) => dispatch({ type: 'setTitle', title: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
+          }}
         />
         <select
           aria-label="Time signature"
           value={state.song.timeSignature}
-          onChange={(e) =>
-            dispatch({ type: 'setTimeSignature', timeSignature: e.target.value as TimeSignature })
-          }
+          onChange={(e) => {
+            dispatch({ type: 'setTimeSignature', timeSignature: e.target.value as TimeSignature });
+            e.currentTarget.blur();
+          }}
         >
           {TIME_SIGNATURES.map((ts) => (
             <option key={ts} value={ts}>
