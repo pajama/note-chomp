@@ -38,7 +38,16 @@ const DOM_GLOBALS = [
 ].map((name) => ({ name, message: 'src/core must stay free of browser APIs.' }));
 
 export default tseslint.config(
-  { ignores: ['dist', 'playwright-report', 'test-results', 'art-concepts', 'coverage'] },
+  {
+    ignores: [
+      'dist',
+      'playwright-report',
+      'test-results',
+      'art-concepts',
+      'coverage',
+      '.superpowers',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
