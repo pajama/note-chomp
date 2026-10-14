@@ -5,6 +5,7 @@ import globals from 'globals';
 
 const SCRIPTS = ['**/scripts', '**/scripts/**'];
 const REACT = ['react', 'react-dom', 'react-dom/*'];
+const TONE = ['tone', 'tone/*'];
 const layer = (names) => names.flatMap((n) => [`**/${n}`, `**/${n}/**`]);
 
 const forbid = (patterns) => ({
@@ -21,6 +22,7 @@ const LAYERS = [
   'src/render/**',
   'src/export/**',
   'src/persistence/**',
+  'src/audio/**',
 ];
 const DOM_GLOBALS = [
   'window',
@@ -55,12 +57,18 @@ export default tseslint.config(
     ignores: LAYERS,
     rules: forbid(SCRIPTS),
   },
+  // Only src/audio and src/app may touch Tone.js.
+  {
+    files: ['src/songs/**/*.{ts,tsx}', 'src/main.tsx'],
+    rules: forbid([...TONE, ...SCRIPTS]),
+  },
   {
     files: ['src/core/**/*.{ts,tsx}'],
     rules: {
       ...forbid([
         ...REACT,
-        ...layer(['formats', 'render', 'export', 'persistence', 'app', 'songs']),
+        ...layer(['formats', 'render', 'export', 'persistence', 'app', 'songs', 'audio']),
+        ...TONE,
         ...SCRIPTS,
       ]),
       'no-restricted-globals': ['error', ...DOM_GLOBALS],
@@ -70,20 +78,43 @@ export default tseslint.config(
     files: ['src/formats/**/*.{ts,tsx}'],
     rules: forbid([
       ...REACT,
-      ...layer(['render', 'export', 'persistence', 'app', 'songs']),
+      ...layer(['render', 'export', 'persistence', 'app', 'songs', 'audio']),
+      ...TONE,
       ...SCRIPTS,
     ]),
   },
   {
     files: ['src/render/**/*.{ts,tsx}'],
-    rules: forbid([...layer(['app', 'persistence', 'export', 'formats', 'songs']), ...SCRIPTS]),
+    rules: forbid([
+      ...layer(['app', 'persistence', 'export', 'formats', 'songs', 'audio']),
+      ...TONE,
+      ...SCRIPTS,
+    ]),
   },
   {
     files: ['src/export/**/*.{ts,tsx}'],
-    rules: forbid([...layer(['app', 'persistence', 'songs', 'formats']), ...SCRIPTS]),
+    rules: forbid([
+      ...layer(['app', 'persistence', 'songs', 'formats', 'audio']),
+      ...TONE,
+      ...SCRIPTS,
+    ]),
   },
   {
     files: ['src/persistence/**/*.{ts,tsx}'],
-    rules: forbid([...REACT, ...layer(['app', 'render', 'export', 'songs']), ...SCRIPTS]),
+    rules: forbid([
+      ...REACT,
+      ...layer(['app', 'render', 'export', 'songs', 'audio']),
+      ...TONE,
+      ...SCRIPTS,
+    ]),
+  },
+  // audio: Tone.js + core only.
+  {
+    files: ['src/audio/**/*.{ts,tsx}'],
+    rules: forbid([
+      ...REACT,
+      ...layer(['formats', 'render', 'export', 'persistence', 'app', 'songs']),
+      ...SCRIPTS,
+    ]),
   },
 );
