@@ -3,6 +3,8 @@ import type { SamplerLike, ToneLike } from './toneLike';
 /** Loads Tone.js on first use (its own chunk) and adapts it to ToneLike. */
 export async function loadTone(): Promise<ToneLike> {
   const Tone = await import('tone');
+  // Creates Tone's (suspended) AudioContext now, at prefetch time, on purpose: Tone.start() must
+  // find a context to resume inside the Play gesture. See NotePlayer.prefetch.
   const transport = Tone.getTransport();
   const draw = Tone.getDraw();
   return {
@@ -14,7 +16,10 @@ export async function loadTone(): Promise<ToneLike> {
           baseUrl,
           release: 1,
           onload: () => resolve(sampler),
-          onerror: (error) => reject(error),
+          onerror: (error) => {
+            sampler.dispose();
+            reject(error);
+          },
         }).toDestination();
       }),
     scheduleOnce: (callback, seconds) => {
