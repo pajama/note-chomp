@@ -89,6 +89,11 @@ export function useEditorKeyboard(
       if (target?.closest(TEXT_FIELDS)) return;
       if (target?.matches('input[type="range"]') && e.key.startsWith('Arrow')) return;
       if (e.key === ' ' && target?.closest(SPACE_OWNERS)) return;
+      // A held Space auto-repeats; only the first press toggles playback.
+      if (e.key === ' ' && e.repeat) {
+        e.preventDefault();
+        return;
+      }
       const command = keyToCommand(e, { hasSelection: latest.current.hasSelection });
       if (!command) return;
       e.preventDefault();

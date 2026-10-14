@@ -105,3 +105,16 @@ test('if the piano cannot load, editing keeps working and Play explains', async 
   await page.keyboard.press('g');
   await expect(fruits(page)).toHaveCount(3);
 });
+
+test('holding Space starts playback once instead of flapping play/stop', async ({ page }) => {
+  await openEditor(page, 'cdefgabc');
+  await page.getByLabel('Tempo').fill('60');
+  await page.keyboard.down(' ');
+  // Further keydowns while the key is held are auto-repeats (event.repeat is true).
+  for (let i = 0; i < 5; i++) await page.keyboard.down(' ');
+  await page.keyboard.up(' ');
+  await expect(stopButton(page)).toBeVisible();
+  const log = await audioLog(page);
+  expect(log.filter((c) => c.kind === 'play')).toHaveLength(1);
+  expect(log.filter((c) => c.kind === 'stop')).toHaveLength(0);
+});
