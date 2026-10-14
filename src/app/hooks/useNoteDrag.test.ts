@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dragSteps, staffSpacePx } from './useNoteDrag';
+import { canDrag, dragSteps, staffSpacePx } from './useNoteDrag';
 
 describe('dragSteps', () => {
   it('moves one line or space per half staff space, upward positive', () => {
@@ -30,5 +30,18 @@ describe('staffSpacePx', () => {
   it('is 0 without an svg or before it has a size', () => {
     expect(staffSpacePx(null, 6.5)).toBe(0);
     expect(staffSpacePx(svg(0, 800), 6.5)).toBe(0);
+  });
+});
+
+describe('canDrag', () => {
+  it('lets a mouse press-and-drag any note', () => {
+    expect(canDrag('mouse', false)).toBe(true);
+    expect(canDrag('mouse', true)).toBe(true);
+  });
+  it('lets a finger or pen drag only a note that was already selected', () => {
+    expect(canDrag('touch', false)).toBe(false);
+    expect(canDrag('pen', false)).toBe(false);
+    expect(canDrag('touch', true)).toBe(true);
+    expect(canDrag('pen', true)).toBe(true);
   });
 });

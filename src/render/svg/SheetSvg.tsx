@@ -161,7 +161,9 @@ export function SheetSvg({
                   key={`n${target.eventIndex}`}
                   data-kind="note-target"
                   data-event-index={target.eventIndex}
-                  className="note-target"
+                  className={
+                    selection === target.eventIndex ? 'note-target selected' : 'note-target'
+                  }
                   x={target.x}
                   y={target.y}
                   width={target.width}

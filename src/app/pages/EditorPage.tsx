@@ -191,6 +191,7 @@ function EditorWorkspace({
 
   const onNotePointerDown = useNoteDrag({
     events: state.song.events,
+    selection: state.selection,
     dispatch,
     preview: playback.preview,
     staffSpaceMm: EDITOR_OPTIONS.staffSpaceMm,
