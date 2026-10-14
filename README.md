@@ -12,6 +12,13 @@ Quarter and eighth notes are solid fruit with a tiny smile; half and whole notes
 (pale fill, thick colored outline). Fruit are drawn about 1.3× the size of a normal note head, always
 centered on their line or space, in a big staff (Large 6.5 mm or Jumbo 9 mm between lines).
 
+## Play it
+
+Press ▶ Play (or Space) in the editor to hear your song on a piano; the note being played lights up and
+the page follows it. The 🐢 … 🐇 slider sets the tempo (60–160 beats per minute). Tap a note on the staff
+to choose it, then tap a fruit key, type a letter, or drag it up and down to change it. ← → walk through
+the notes, ↑ ↓ move the chosen note, Esc lets go. The "?" button in the editor lists every shortcut.
+
 ## Run it
 
 ```bash
@@ -48,10 +55,13 @@ Note Chomp JSON. Songs you make or import are saved in your browser.
 - `src/formats/` — ABC, MusicXML/.mxl and Note Chomp JSON importers (`importSong`).
 - `src/render/` — one SVG renderer (fruit, monster, glyphs) used for both screen and PDF.
 - `src/export/pdf/` — vector PDF via jsPDF + svg2pdf.js.
+- `src/audio/` — playback behind a `NotePlayer` interface: the Tone.js piano (`ToneNotePlayer`; Tone's
+  code is fetched when the editor opens, the piano samples on first use) and a fake used by the tests.
 - `src/persistence/` — `SongRepository` interface + validated localStorage implementation.
 - `src/app/` — React UI: songbook, tap editor, import, print preview.
 
-Layer rules are enforced by ESLint (`core` imports nothing else; `formats` imports only `core`).
+Layer rules are enforced by ESLint (`core` imports nothing else; `formats` imports only `core`; `audio`
+imports only `core` and Tone.js, and nothing but `audio` and `app` may import Tone.js).
 
 ## Concept art with APE (optional, dev only)
 
@@ -67,3 +77,11 @@ retried. The key is never bundled into the web app.
 
 The images are for concept exploration only: they currently come back without real transparency (a
 checkerboard is painted into the picture), so the printed art stays hand-made SVG.
+
+## Credits
+
+Piano sound: [Salamander Grand Piano V3](https://archive.org/details/SalamanderGrandPianoV3) by
+Alexander Holm, licensed [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). The MP3 files in
+`public/samples/piano/` are the [Tone.js](https://tonejs.github.io/) project's conversions
+(<https://tonejs.github.io/audio/salamander/>), unmodified. Playback uses
+[Tone.js](https://github.com/Tonejs/Tone.js) (MIT).
