@@ -53,8 +53,9 @@ function RouteView({ route }: { route: Route }) {
 
 export function App() {
   const route = useRoute();
+  const inEditor = route.name === 'new' || route.name === 'edit';
   return (
-    <div className="app">
+    <div className={inEditor ? 'app app-editor' : 'app'}>
       <header className="app-header no-print">
         <a href="#/" className="brand">
           Note Chomp

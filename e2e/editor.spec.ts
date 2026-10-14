@@ -31,7 +31,7 @@ test('explains when a note does not fit in the measure', async ({ page }) => {
   await page.getByRole('button', { name: 'Add C4' }).click();
   await page.getByRole('button', { name: 'Dot', exact: true }).click();
   await page.getByRole('button', { name: 'Add D4' }).click();
-  await expect(page.getByRole('alert')).toContainText("doesn't fit");
+  await expect(page.getByTestId('toast')).toContainText("doesn't fit");
   await expect(fruits(page)).toHaveCount(1);
 });
 

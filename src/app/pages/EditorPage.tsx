@@ -1,18 +1,23 @@
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { createEditorState, editorReducer } from '../../core/editor/editorReducer';
 import { createEmptySong } from '../../core/model/factories';
 import { newSongId } from '../../core/model/id';
-import { TIME_SIGNATURES, type Song, type TimeSignature } from '../../core/model/types';
+import { TIME_SIGNATURES, type Pitch, type Song, type TimeSignature } from '../../core/model/types';
 import { clearDraft, saveDraft } from '../../persistence/draft';
 import { DurationPicker } from '../components/DurationPicker';
+import { EditorSheet } from '../components/EditorSheet';
 import { FruitKeyboard } from '../components/FruitKeyboard';
-import { SongPages } from '../components/SongPages';
+import { HelpPopover } from '../components/HelpPopover';
+import { Toast } from '../components/Toast';
 import { useEditorKeyboard } from '../hooks/useEditorKeyboard';
+import { useToast } from '../hooks/useToast';
 import { navigate, setNavigationGuard } from '../router';
 import { useServices } from '../services';
 import { messageOf, useSongLibrary, type SongLibrary } from '../useSongLibrary';
 
 export const LEAVE_UNSAVED_MESSAGE = 'Your song is not saved yet. Leave without saving it?';
+/** How long the problem measure flashes after an error. */
+const FLASH_MS = 1200;
 
 interface EditorPageProps {
   songId?: string;
@@ -55,10 +60,26 @@ function EditorWorkspace({
 }) {
   const { storage } = useServices();
   const [state, dispatch] = useReducer(editorReducer, initialSong, createEditorState);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [flashMeasure, setFlashMeasure] = useState<number | null>(null);
+  const toast = useToast();
+  const selected = state.selection === null ? undefined : state.song.events[state.selection];
 
   useEditorKeyboard(dispatch);
+
+  // Reducer errors become a toast plus a brief flash on the measure they are about.
+  const { show } = toast;
+  useEffect(() => {
+    if (!state.error) return;
+    show(state.error);
+    setFlashMeasure(state.errorMeasure);
+    dispatch({ type: 'dismissError' });
+  }, [state.error, state.errorMeasure, show]);
+  useEffect(() => {
+    if (flashMeasure === null) return;
+    const timer = setTimeout(() => setFlashMeasure(null), FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [flashMeasure]);
 
   useEffect(() => {
     if (state.dirty) saveDraft(storage, state.song);
@@ -82,9 +103,23 @@ function EditorWorkspace({
     [],
   );
 
+  const onNote = (pitch: Pitch, baseOctave: 4 | 5) => {
+    dispatch(
+      state.selection === null
+        ? { type: 'insertNote', pitch, baseOctave }
+        : { type: 'changeSelectedPitch', pitch, baseOctave },
+    );
+  };
+
+  const onRest = () =>
+    dispatch(state.selection === null ? { type: 'insertRest' } : { type: 'restSelected' });
+
+  const onNotePointerDown = useCallback((index: number) => dispatch({ type: 'select', index }), []);
+  const onGapClick = useCallback((index: number) => dispatch({ type: 'setCursor', index }), []);
+  const onBackgroundPointerDown = useCallback(() => dispatch({ type: 'clearSelection' }), []);
+
   const save = async (): Promise<Song | undefined> => {
     setSaving(true);
-    setSaveError(null);
     try {
       const saved = await library.save(state.song);
       dispatch({ type: 'markSaved' });
@@ -92,7 +127,7 @@ function EditorWorkspace({
       clearDraft(storage);
       return saved;
     } catch (e) {
-      setSaveError(messageOf(e));
+      show(messageOf(e));
       return undefined;
     } finally {
       setSaving(false);
@@ -112,11 +147,9 @@ function EditorWorkspace({
     if (saved) navigate({ name: 'print', id: saved.id });
   };
 
-  const message = state.error ?? saveError;
-
   return (
     <div className="editor">
-      <div className="toolbar no-print">
+      <div className="editor-topbar toolbar no-print">
         <input
           type="text"
           aria-label="Song title"
@@ -166,48 +199,37 @@ function EditorWorkspace({
         </button>
       </div>
 
-      {message && (
-        <div className="alert error" role="alert">
-          {message}{' '}
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              dispatch({ type: 'dismissError' });
-              setSaveError(null);
-            }}
-          >
-            OK
-          </button>
-        </div>
-      )}
+      <EditorSheet
+        song={state.song}
+        cursor={state.cursor}
+        selection={state.selection}
+        playing={null}
+        flashMeasure={flashMeasure}
+        onNotePointerDown={onNotePointerDown}
+        onBackgroundPointerDown={onBackgroundPointerDown}
+        onGapClick={onGapClick}
+      />
 
-      <div className="panel editor-controls no-print">
-        <DurationPicker
-          duration={state.duration}
-          dotted={state.dotted}
-          timeSignature={state.song.timeSignature}
-          onDuration={(duration) => dispatch({ type: 'setDuration', duration })}
-          onToggleDot={() => dispatch({ type: 'toggleDotted' })}
-          onRest={() => dispatch({ type: 'insertRest' })}
-          onBackspace={() => dispatch({ type: 'deleteBackward' })}
-        />
+      <div className="editor-dock no-print">
+        <Toast message={toast.toast} onDismiss={toast.dismiss} />
+        <div className="dock-row">
+          <DurationPicker
+            duration={selected?.duration ?? state.duration}
+            dotted={selected ? !!selected.dotted : state.dotted}
+            timeSignature={state.song.timeSignature}
+            onDuration={(duration) => dispatch({ type: 'setDuration', duration })}
+            onToggleDot={() => dispatch({ type: 'toggleDotted' })}
+            onRest={onRest}
+            onBackspace={() => dispatch({ type: 'deleteBackward' })}
+          />
+          <HelpPopover />
+        </div>
         <FruitKeyboard
           octaveShift={state.octaveShift}
-          onNote={(pitch, baseOctave) => dispatch({ type: 'insertNote', pitch, baseOctave })}
+          onNote={onNote}
           onShift={(delta) => dispatch({ type: 'shiftOctave', delta })}
         />
-        <p className="hint">
-          Tip: type C–B to add notes, 1–4 for note lengths, R for a rest, “.” for a dot, arrows to
-          move, Backspace to delete. Click a fruit to put the cursor right after it.
-        </p>
       </div>
-
-      <SongPages
-        song={state.song}
-        cursorIndex={state.cursor}
-        onEventClick={(index) => dispatch({ type: 'setCursor', index: index + 1 })}
-      />
     </div>
   );
 }
