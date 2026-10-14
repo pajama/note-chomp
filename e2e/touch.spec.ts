@@ -1,22 +1,8 @@
 import { expect, fruits, noteButton, openEditor, test, type Page } from './fixtures';
+import { swipe } from './mobile/touch-helpers';
 
 // An iPad-sized touch screen.
 test.use({ viewport: { width: 1024, height: 700 }, hasTouch: true });
-
-/** A real one-finger swipe (touch events through CDP, so the browser may scroll). */
-async function swipe(page: Page, x: number, fromY: number, toY: number) {
-  const cdp = await page.context().newCDPSession(page);
-  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', y: number) =>
-    cdp.send('Input.dispatchTouchEvent', {
-      type,
-      touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
-    });
-  await touch('touchStart', fromY);
-  const steps = 12;
-  for (let i = 1; i <= steps; i++) await touch('touchMove', fromY + ((toY - fromY) * i) / steps);
-  await touch('touchEnd', toY);
-  await cdp.detach();
-}
 
 async function center(page: Page, n: number) {
   const box = await noteButton(page, n).boundingBox();

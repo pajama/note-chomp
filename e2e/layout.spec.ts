@@ -62,3 +62,12 @@ test('Esc closes help even when focus is elsewhere, keeps the selection, and ref
   await expect(noteButton(page, 2)).toHaveAccessibleName(/selected$/);
   await expect(helpButton).toBeFocused();
 });
+
+test('a mouse hover still highlights a fruit key', async ({ page }) => {
+  await page.goto('/#/new');
+  const key = page.getByRole('button', { name: 'Add A4' });
+  await key.hover();
+  await expect
+    .poll(() => key.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgb(245, 245, 245)');
+});
