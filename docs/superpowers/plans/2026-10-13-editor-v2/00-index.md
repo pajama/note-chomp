@@ -22,14 +22,14 @@ Carried over from v1 (unchanged):
 - TypeScript `strict: true`. No `any` in `src/` or `e2e/` (use `unknown` + validation).
 - Git: plain git repo (not Sapling). Work on branch `feat/editor-playback`. Commit with `git add <files> && git commit -m "..."` after each task.
 - Run `npm run format` before every commit; `npm run format:check` runs in CI. Plan code blocks are Prettier-formatted; if Prettier still changes something, keep Prettier's version.
-- Browser verification by an agent uses the shared debug Chrome on port 9222 (`curl -fsS --max-time 2 http://127.0.0.1:9222/json/version`; if it fails ask the user to run `! gcdb`). Playwright **test runner** e2e tests use their own headless Chromium — that is fine.
+- Browser verification by an agent uses the shared debug Chrome on port 9222 (`curl -fsS --max-time 2 http://127.0.0.1:9222/json/version`; if it fails ask the user to run `! gcdb`). Load the `browser-automation-gcdb` skill before any click/type/drag check. Start the dev server with the Bash tool's `run_in_background: true` (command `npm run dev -- --port 5173`) when `lsof -iTCP:5173 -sTCP:LISTEN` prints nothing — never with a shell `&`, which orphans the process. Playwright **test runner** e2e tests use their own headless Chromium — that is fine.
 - On this machine the Bash sandbox kills Chromium: run `npm run test:e2e` and `npx playwright test …` with the sandbox disabled for that one command (and only in the project directory). Port 5179 must be free (`lsof -iTCP:5179 -sTCP:LISTEN` prints nothing) — otherwise Playwright reuses a foreign dev server.
 - Wrap shell commands in explicit timeouts and use `vitest run`, never watch mode.
 
 New for v2:
 
 - **Audio layer:** `src/audio/**` may import only `core` and `tone`. Nothing outside `src/audio` and `src/app` may import `tone` (`tone` / `tone/*`). Enforced by ESLint (Task 8, with probe files).
-- **Tone is loaded lazily:** only `src/audio/loadTone.ts` imports it, via `await import('tone')`, so it lands in its own chunk and never loads until the first Play/preview.
+- **Tone is loaded lazily:** only `src/audio/loadTone.ts` imports it, via `await import('tone')`, so it lands in its own chunk, fetched in the background when the editor opens (`NotePlayer.prefetch()`, no AudioContext yet) so the first Play/preview gesture can resume audio synchronously. The 11 piano samples load only on the first Play/preview.
 - **Samples:** Salamander Grand Piano mp3s from `https://tonejs.github.io/audio/salamander/`, bundled in `public/samples/piano/` (11 files F#3…C6, ≤ 1 MB total), CC-BY 3.0 — attribution in `public/samples/piano/ATTRIBUTION.txt` and the README.
 - **Tempo:** `BPM_RANGE = { min: 60, max: 160, default: 90 }`; quarter note = 60/bpm s. Preview length `PREVIEW_SECONDS = 0.4`.
 - **Selection invariant:** `EditorState.selection: number | null`. When it is non-null the insert cursor is hidden and fruit keys / letters change the selected event instead of inserting. `select` parks `cursor` right after the selected event. Undo/redo snapshots are `{ song, cursor, selection }`.
@@ -48,9 +48,10 @@ New for v2:
 5. **Fake audio switch** accepts `true` or `'fail-load'` (to e2e-test the §4/§5 failure path).
 6. **Samples:** F#3, A3, C4, D#4, F#4, A4, C5, D#5, F#5, A5, C6 (≈ 690 KB) — Tone pitch-shifts at most 1.5 semitones.
 7. **Draft restore** keeps v1's single draft slot (`notechomp:draft:v1`). Rules (`draftToOffer`): on `#/new`, offer a non-empty draft whose id is not a saved song; on a saved song, offer its own draft if it differs; never on a fresh starter copy. Editing without answering dismisses the offer. The editor now waits for the song library before showing `#/new` too.
-8. **ABC "not music" rule:** if any characters were skipped and either the text has no `K:` field or more characters were skipped than notes were read, the import fails with "No notes were found. Is this ABC, MusicXML or a Note Chomp file?".
-9. **Space** toggles playback unless focus is in a text field, select, button or link (those keep their native Space).
+8. **ABC "not music" rule:** if any characters were skipped, no other error was found, and either the text has no `K:` field or more characters were skipped than notes were read, the import fails with "No notes were found. Is this ABC, MusicXML or a Note Chomp file?".
+9. **Space** toggles playback unless focus is in a text field, select or link, or on the Play / Help buttons (those keep their native Space). Fruit keys, length buttons, Undo/Redo etc. do not keep Space: after tapping a fruit, Space must play, not tap it again (Enter still presses a focused button). The tempo slider is not a text field: letters, Space and Esc reach the editor while it has focus; only the arrow keys stay with it.
 10. While a note is selected the length buttons show **its** length and dot.
+11. **Pressing a note takes focus out of text fields** (title, time signature, tempo) so the next letter changes the note, and a press on blank sheet (margins, between systems) clears the selection.
 
 ## File Map
 

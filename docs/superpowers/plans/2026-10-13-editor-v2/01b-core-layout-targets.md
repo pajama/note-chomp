@@ -51,8 +51,9 @@ describe('editorHitTargets', () => {
     const system = layout.pages[0].systems[0];
     for (const fruit of system.items.filter((i): i is FruitItem => i.kind === 'fruit')) {
       const target = page.notes.find((t) => t.eventIndex === fruit.eventIndex)!;
-      expect(fruit.x - fruit.size / 2).toBeGreaterThanOrEqual(target.x);
-      expect(fruit.x + fruit.size / 2).toBeLessThanOrEqual(target.x + target.width);
+      // The fruit's left edge and the column's left edge are mathematically equal; allow float noise.
+      expect(fruit.x - fruit.size / 2).toBeGreaterThanOrEqual(target.x - 1e-9);
+      expect(fruit.x + fruit.size / 2).toBeLessThanOrEqual(target.x + target.width + 1e-9);
       expect(target.y).toBeCloseTo(system.staffTop - 3 * s);
       expect(target.height).toBeCloseTo(11 * s);
     }

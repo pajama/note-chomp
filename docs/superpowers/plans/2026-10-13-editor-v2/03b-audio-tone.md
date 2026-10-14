@@ -17,7 +17,7 @@
   - `interface ToneLike { start(): Promise<void>; loadSampler(urls: Record<string, string>, baseUrl: string): Promise<SamplerLike>; scheduleOnce(callback: (time: number) => void, seconds: number): void; draw(callback: () => void, time: number): void; startTransport(): void; stopTransport(): void }`
   - `loadTone(): Promise<ToneLike>` (the only `import('tone')` in the app).
   - `PIANO_SAMPLES: Readonly<Record<string, string>>` (note → file), `SAMPLE_BASE_URL = \`${import.meta.env.BASE_URL}samples/piano/\``
-  - `class ToneNotePlayer implements NotePlayer` — `constructor(loadToneApi: () => Promise<ToneLike> = loadTone, baseUrl: string = SAMPLE_BASE_URL)`. `load()` is idempotent (Tone + samples loaded once; a failure lets the next call retry). `play()` stops anything playing, schedules every event on the Transport (`triggerAttackRelease` at the exact audio time, highlight via `draw`), then `onEnd` at `scheduleEnd`, and starts the Transport. `stop()` stops the Transport and releases every voice (no-op before load). `preview(note)` plays `PREVIEW_SECONDS`; before load it only starts loading.
+  - `class ToneNotePlayer implements NotePlayer` — `constructor(loadToneApi: () => Promise<ToneLike> = loadTone, baseUrl: string = SAMPLE_BASE_URL)`. `prefetch()` imports Tone (once) without touching the AudioContext. `load()` is idempotent (Tone + samples loaded once; a failure lets the next call retry) and **never awaits `tone.start()`**. `play()` and `preview()` call `tone.start()` synchronously, before any `await`, whenever Tone is already imported, so the resume happens inside the user's gesture (iOS Safari only resumes an AudioContext there, and a `resume()` outside a gesture can stay pending forever). `play()` stops anything playing, schedules every event on the Transport (`triggerAttackRelease` at the exact audio time, highlight via `draw`), then at `scheduleEnd` stops the Transport and calls `onEnd` from a `setTimeout` (not `draw`: Tone.Draw drops callbacks that are over 0.25 s late and pauses in background tabs), and starts the Transport. A `stop()` that lands while `play()` is still awaiting the load cancels it (play token). `stop()` stops the Transport and releases every voice (before load it only cancels a pending play). `preview(note)` plays `PREVIEW_SECONDS`; before load it only starts loading.
 
 - [ ] **Step 1: Add Tone.js**
 
@@ -63,7 +63,7 @@ import { PREVIEW_SECONDS } from './NotePlayer';
 import { PIANO_SAMPLES, ToneNotePlayer } from './ToneNotePlayer';
 import type { SamplerLike, ToneLike } from './toneLike';
 
-function fakeTone(options: { failSamples?: boolean } = {}) {
+function fakeTone(options: { failSamples?: boolean; hangStart?: boolean } = {}) {
   const sampler: SamplerLike & {
     played: [string, number, number | undefined][];
     released: number;
@@ -79,7 +79,8 @@ function fakeTone(options: { failSamples?: boolean } = {}) {
   };
   const scheduled: { callback: (time: number) => void; seconds: number }[] = [];
   const tone = {
-    start: vi.fn(async () => {}),
+    // hangStart: a resume() outside a user gesture on iOS Safari never settles.
+    start: vi.fn(() => (options.hangStart ? new Promise<void>(() => {}) : Promise.resolve())),
     loadSampler: vi.fn(async () => {
       if (options.failSamples) throw new Error('404');
       return sampler;
@@ -152,7 +153,10 @@ describe('ToneNotePlayer', () => {
     expect(scheduled.map((s) => s.seconds)).toEqual([0, 1, 2, 4]);
     expect(tone.startTransport).toHaveBeenCalledTimes(1);
     runTransport();
+    expect(seen).toEqual([0, 1, 2]);
+    await new Promise((resolve) => setTimeout(resolve, 0)); // the end is reported off the audio thread
     expect(seen).toEqual([0, 1, 2, 'end']);
+    expect(tone.stopTransport).toHaveBeenCalledTimes(1); // the transport is stopped at the end
     expect(sampler.played.map(([n, , t]) => [n, t])).toEqual([
       ['C4', 100],
       ['G4', 102],
@@ -169,6 +173,43 @@ describe('ToneNotePlayer', () => {
     player.stop();
     expect(tone.stopTransport).toHaveBeenCalled();
     expect(sampler.released).toBeGreaterThan(0);
+  });
+
+  it('never waits on the AudioContext, and resumes it again at the start of every play', async () => {
+    const { tone } = fakeTone({ hangStart: true });
+    const player = new ToneNotePlayer(async () => tone);
+    await expect(player.load()).resolves.toBeUndefined();
+    const before = tone.start.mock.calls.length;
+    const playing = player.play(buildSchedule(song, 60), { onEvent: vi.fn(), onEnd: vi.fn() });
+    expect(tone.start).toHaveBeenCalledTimes(before + 1); // synchronously, inside the gesture
+    await playing;
+    expect(tone.startTransport).toHaveBeenCalledTimes(1);
+  });
+
+  it('prefetch imports Tone without touching audio, so the first gesture can resume at once', async () => {
+    const { tone } = fakeTone();
+    const loadTone = vi.fn(async () => tone);
+    const player = new ToneNotePlayer(loadTone);
+    player.prefetch();
+    player.prefetch();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(loadTone).toHaveBeenCalledTimes(1);
+    expect(tone.start).not.toHaveBeenCalled();
+    expect(tone.loadSampler).not.toHaveBeenCalled();
+    player.preview('E4');
+    expect(tone.start).toHaveBeenCalledTimes(1);
+    await player.load();
+    expect(loadTone).toHaveBeenCalledTimes(1);
+  });
+
+  it('a stop while play() is still loading cancels that play', async () => {
+    const { tone } = fakeTone();
+    const player = new ToneNotePlayer(async () => tone);
+    const onEnd = vi.fn();
+    const playing = player.play(buildSchedule(song, 60), { onEvent: vi.fn(), onEnd });
+    player.stop();
+    await playing;
+    expect(tone.startTransport).not.toHaveBeenCalled();
   });
 
   it('preview is silent until loaded but starts loading', async () => {
@@ -290,39 +331,60 @@ interface Ready {
 }
 
 export class ToneNotePlayer implements NotePlayer {
+  /** Set as soon as Tone is imported, so play/preview can resume audio inside the gesture. */
+  private tone: ToneLike | null = null;
+  private toneLoading: Promise<ToneLike> | null = null;
   private ready: Ready | null = null;
   private loading: Promise<Ready> | null = null;
+  /** Bumped by every play and stop, so a play still awaiting the load knows it was cancelled. */
+  private token = 0;
 
   constructor(
     private readonly loadToneApi: () => Promise<ToneLike> = loadTone,
     private readonly baseUrl: string = SAMPLE_BASE_URL,
   ) {}
 
+  prefetch(): void {
+    this.loadToneOnce().catch(() => undefined);
+  }
+
   async load(): Promise<void> {
     await this.loadReady();
   }
 
   async play(schedule: ScheduledEvent[], handlers: PlaybackHandlers): Promise<void> {
-    const { tone, sampler } = await this.loadReady();
+    this.resume(); // before any await: this is still inside the click / key press
     this.stop();
-    await tone.start();
+    const token = ++this.token;
+    const { tone, sampler } = await this.loadReady();
+    if (token !== this.token) return;
+    this.resume();
     for (const event of schedule) {
       tone.scheduleOnce((time) => {
         if (event.note) sampler.triggerAttackRelease(event.note, event.duration * LEGATO, time);
         tone.draw(() => handlers.onEvent(event.eventIndex), time);
       }, event.time);
     }
-    tone.scheduleOnce((time) => tone.draw(() => handlers.onEnd(), time), scheduleEnd(schedule));
+    // Not via draw(): Tone.Draw drops late callbacks and pauses in background tabs.
+    tone.scheduleOnce(() => {
+      setTimeout(() => {
+        if (token !== this.token) return;
+        tone.stopTransport();
+        handlers.onEnd();
+      }, 0);
+    }, scheduleEnd(schedule));
     tone.startTransport();
   }
 
   stop(): void {
+    this.token++;
     if (!this.ready) return;
     this.ready.tone.stopTransport();
     this.ready.sampler.releaseAll();
   }
 
   preview(note: string): void {
+    this.resume();
     if (!this.ready) {
       this.loadReady().catch(() => undefined);
       return;
@@ -330,17 +392,43 @@ export class ToneNotePlayer implements NotePlayer {
     this.ready.sampler.triggerAttackRelease(note, PREVIEW_SECONDS);
   }
 
+  /** Ask the AudioContext to resume without waiting: outside a gesture it may never settle. */
+  private resume(): void {
+    this.tone?.start().catch(() => undefined);
+  }
+
+  private loadToneOnce(): Promise<ToneLike> {
+    if (!this.toneLoading) {
+      const loading = this.loadToneApi().then((tone) => {
+        this.tone = tone;
+        return tone;
+      });
+      this.toneLoading = loading;
+      loading.catch(() => {
+        if (this.toneLoading === loading) this.toneLoading = null;
+      });
+    }
+    return this.toneLoading;
+  }
+
   private loadReady(): Promise<Ready> {
-    this.loading ??= (async () => {
-      const tone = await this.loadToneApi();
-      await tone.start();
-      const sampler = await tone.loadSampler({ ...PIANO_SAMPLES }, this.baseUrl);
-      this.ready = { tone, sampler };
-      return this.ready;
-    })();
-    this.loading.catch(() => {
-      this.loading = null;
-    });
+    if (!this.loading) {
+      const loading = (async () => {
+        const tone = await this.loadToneOnce();
+        this.resume();
+        const sampler = await tone.loadSampler({ ...PIANO_SAMPLES }, this.baseUrl);
+        this.ready = { tone, sampler };
+        return this.ready;
+      })();
+      this.loading = loading;
+      loading.catch(() => {
+        // Start over next time, Tone included (a retry may get a working instance).
+        if (this.loading !== loading) return;
+        this.loading = null;
+        this.toneLoading = null;
+        this.tone = null;
+      });
+    }
     return this.loading;
   }
 }
@@ -349,7 +437,7 @@ export class ToneNotePlayer implements NotePlayer {
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `timeout 120 npx vitest run src/audio`
-Expected: PASS (10 tests). `loadTone.ts` has no unit test (it needs a real AudioContext); it is type-checked against Tone's own types here and exercised for real in Task 26.
+Expected: PASS (13 tests). `loadTone.ts` has no unit test (it needs a real AudioContext); it is type-checked against Tone's own types here and exercised for real in Task 26.
 
 - [ ] **Step 7: Verify everything (including that Tone gets its own chunk) and commit**
 

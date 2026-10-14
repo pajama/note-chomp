@@ -13,7 +13,7 @@ Spec §6. Their end-to-end tests are in Task 25.
 - Produces (used by Task 25):
   - `NOT_MUSIC_ERROR = 'No notes were found. Is this ABC, MusicXML or a Note Chomp file?'`
   - `skippedWarning(count: number): string` — `"Skipped 1 character we didn't understand."` / `"Skipped 14 characters we didn't understand."`
-  - `parseAbc`: counts skipped characters instead of warning per character; if any were skipped and (no `K:` field or more skipped than notes) → `{ ok: false, errors: [{ message: NOT_MUSIC_ERROR }] }`; otherwise one collapsed warning.
+  - `parseAbc`: counts skipped characters instead of warning per character; if any were skipped, nothing else is already an error, and (no `K:` field or more skipped than notes) → `{ ok: false, errors: [{ message: NOT_MUSIC_ERROR }] }`; otherwise one collapsed warning (and any real errors, such as a sharp, are reported as usual).
   - `ImportPage`: editing the text clears the previous result and save error (no stale Save buttons).
 
 - [ ] **Step 1: Write the failing test**
@@ -39,6 +39,15 @@ describe('parseAbc with text that is not music', () => {
     expect(parseAbc(tune('hello there, my friend'))).toEqual({
       ok: false,
       errors: [{ message: NOT_MUSIC_ERROR }],
+    });
+  });
+
+  it('keeps the specific error when a real tune also has unreadable characters', () => {
+    expect(parseAbc(tune('^C # & |]'))).toEqual({
+      ok: false,
+      errors: [
+        { message: "Measure 1: C♯ isn't in the key of C. Only white keys are supported for now." },
+      ],
     });
   });
 
@@ -153,7 +162,9 @@ with:
   if (header.skipped > 0) {
     // Plain text (a shopping list, a sentence) is mostly letters we can't read, plus a few a–g.
     const notes = events.filter((e) => e.kind === 'note').length;
-    if (!header.sawKey || header.skipped > notes) return importFailure([NOT_MUSIC_ERROR]);
+    const looksLikeText = !header.sawKey || header.skipped > notes;
+    // A real error (a sharp, a bad meter) says more than "no notes were found".
+    if (looksLikeText && !issues.hasErrors) return importFailure([NOT_MUSIC_ERROR]);
     issues.warn(skippedWarning(header.skipped));
   }
 ```
@@ -189,7 +200,7 @@ with:
 - [ ] **Step 4: Run the format tests to verify they pass**
 
 Run: `timeout 120 npx vitest run src/formats`
-Expected: PASS — the 5 new tests and every existing importer test (none of them relied on the per-character warning).
+Expected: PASS — the 8 new tests and every existing importer test (none of them relied on the per-character warning).
 
 - [ ] **Step 5: Clear a stale import result**
 

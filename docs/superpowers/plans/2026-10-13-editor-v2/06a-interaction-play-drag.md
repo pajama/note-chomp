@@ -154,7 +154,7 @@ Expected: all pass (25 e2e).
 
 - [ ] **Step 3: Listen to it in the shared debug Chrome (real Tone.js)**
 
-Start the dev server if needed (`timeout 5 lsof -iTCP:5173 -sTCP:LISTEN || (npm run dev -- --port 5173 > /tmp/note-chomp-dev.log 2>&1 &)`), check `curl -fsS --max-time 2 http://127.0.0.1:9222/json/version` (else ask the user to run `! gcdb`), open a new tab at `http://localhost:5173/#/edit/builtin-twinkle-twinkle`, click ▶ Play. Expected: the button reads "Loading piano…" briefly, then "■ Stop"; piano notes sound; a yellow halo moves note by note; at the end it returns to "▶ Play". Move the tempo slider to 🐇 and play again (faster). Tap a fruit key: a short preview plays. Close only your tab.
+Load the `browser-automation-gcdb` skill first (this check clicks in the shared browser). Start the dev server if `timeout 5 lsof -iTCP:5173 -sTCP:LISTEN` prints nothing: run `npm run dev -- --port 5173` with the Bash tool's `run_in_background: true` (not a shell `&`, which orphans the process). Check `curl -fsS --max-time 2 http://127.0.0.1:9222/json/version` (else ask the user to run `! gcdb`), open a new tab at `http://localhost:5173/#/edit/builtin-twinkle-twinkle`, click ▶ Play. Expected: the button reads "Loading piano…" briefly, then "■ Stop"; piano notes sound; a yellow halo moves note by note; at the end it returns to "▶ Play". Move the tempo slider to 🐇 and play again (faster). Tap a fruit key: a short preview plays. Close only your tab.
 
 - [ ] **Step 4: Commit**
 
@@ -178,7 +178,7 @@ git commit -m "feat(editor): play, stop, tempo, previews and playing highlight"
   - `DRAG_THRESHOLD_PX = 4`
   - `dragSteps(dy: number, staffSpacePx: number): number` = `round(−dy / (staffSpacePx / 2))` (0 when the size is unknown)
   - `staffSpacePx(svg: SVGSVGElement | null, staffSpaceMm: number): number` — on-screen px per staff space from the svg's rendered width ÷ viewBox width.
-  - `useNoteDrag({ events, dispatch, preview, staffSpaceMm }: NoteDragOptions): (eventIndex: number, e: React.PointerEvent<SVGRectElement>) => void` — on primary-button pointerdown: `select`, preview the note, capture the pointer; vertical movement beyond 4 px starts a drag; every change of `dragSteps` dispatches `dragSelected { steps }` and previews the new pitch; pointerup/pointercancel dispatches `endDrag` (only if a drag happened). Rests are selectable but not draggable.
+  - `useNoteDrag({ events, dispatch, preview, staffSpaceMm }: NoteDragOptions): (eventIndex: number, e: React.PointerEvent<SVGRectElement>) => void` — on primary-button pointerdown: blur a focused text field / select / slider (the pointerdown is cancelled, so the browser would not move focus, and the next letter would go to the title instead of the note), `select`, preview the note, capture the pointer; while pressed, a non-passive `touchmove` listener cancels touch scrolling (iOS Safari may ignore `touch-action: none` on SVG children); vertical movement beyond 4 px starts a drag; every change of `dragSteps` dispatches `dragSelected { steps }` and previews the new pitch; pointerup/pointercancel dispatches `endDrag` (only if a drag happened). Rests are selectable but not draggable.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -283,6 +283,9 @@ export function useNoteDrag({ events, dispatch, preview, staffSpaceMm }: NoteDra
     const { events: current, dispatch: send, preview: play } = latest.current;
     const event = current[eventIndex];
     if (!event || e.button !== 0) return;
+    // preventDefault below stops the browser moving focus, so leave any text field ourselves.
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest('input, textarea, select')) active.blur();
     e.preventDefault();
     send({ type: 'select', index: eventIndex });
     if (event.kind === 'note') play(toNoteName(event.pitch, event.octave));
@@ -316,14 +319,19 @@ export function useNoteDrag({ events, dispatch, preview, staffSpaceMm }: NoteDra
       press.current = null;
       cleanup.current?.();
     };
+    // Where `touch-action: none` on an SVG child is ignored, a vertical drag would scroll the
+    // sheet and end in pointercancel after one step; cancelling touchmove keeps the drag ours.
+    const onTouchMove = (t: TouchEvent) => t.preventDefault();
     cleanup.current?.();
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onEnd);
     window.addEventListener('pointercancel', onEnd);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
     cleanup.current = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onEnd);
       window.removeEventListener('pointercancel', onEnd);
+      window.removeEventListener('touchmove', onTouchMove);
       cleanup.current = null;
     };
   }, []);
@@ -386,7 +394,7 @@ npm run format && npm run lint && npm run typecheck && timeout 300 npm test
 timeout 600 npm run test:e2e   # sandbox disabled
 ```
 
-In the debug Chrome tab (see Task 15 Step 3), on `#/new` type `e`, press on the lemon and drag up about one staff space: it becomes a blueberry (G) with a preview at each step; Undo puts it back in one step. The automated drag test is Task 23.
+In the debug Chrome tab (see Task 15 Step 3; load the `browser-automation-gcdb` skill first), on `#/new` type `e`, press on the lemon and drag up about one staff space: it becomes a blueberry (G) with a preview at each step; Undo puts it back in one step. Then the touch check: make the song long enough to scroll, ask the user to turn on touch emulation in that tab (DevTools device toolbar, e.g. "iPad"), and have them (or you, if the browser tools can send touch input) drag a note vertically by touch: the pitch follows for several steps and the sheet does not scroll; a vertical touch drag that starts between notes still scrolls the sheet. The automated drag test is Task 23.
 
 ```bash
 git add src/app/hooks/useNoteDrag.ts src/app/hooks/useNoteDrag.test.ts src/app/pages/EditorPage.tsx

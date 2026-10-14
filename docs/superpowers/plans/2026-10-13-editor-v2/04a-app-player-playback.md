@@ -266,8 +266,8 @@ git commit -m "feat(app): note player service with an e2e fake-audio switch"
   - `type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'unavailable'`
   - `interface PlaybackSnapshot { status: PlaybackStatus; currentEventIndex: number | null; error: string | null }`
   - `AUDIO_UNAVAILABLE_MESSAGE = "We couldn't load the piano sounds, so playback is off. You can keep editing."`
-  - `class PlaybackController` — `constructor(player: NotePlayer)`; `getSnapshot()`, `subscribe(listener)` (for `useSyncExternalStore`); `play(song, bpm, fromIndex = 0): Promise<void>` (`loading` → `playing` → highlight each event → `idle`; a load/play failure → `unavailable` + error; empty schedule → stays idle); `stop()` (immediate, ignores late callbacks, no-op when idle); `preview(note)` (ignored when unavailable); `dismissError()`.
-  - `usePlayback(song: Song): Playback` with `interface Playback { status; playing: boolean /* playing or loading */; currentEventIndex: number | null; error: string | null; bpm: number; setBpm(bpm: number): void; play(fromIndex?: number): void; stop(): void; preview(note: string): void; dismissError(): void }`. Any change to `song.events` or `song.timeSignature` while playing stops playback (title edits don't); unmount stops.
+  - `class PlaybackController` — `constructor(player: NotePlayer)`; `getSnapshot()`, `subscribe(listener)` (for `useSyncExternalStore`); `play(song, bpm, fromIndex = 0): Promise<void>` (`loading` → `playing` → highlight each event → `idle`; a load/play failure → `unavailable` + error; empty schedule → stays idle); `stop()` (immediate, ignores late callbacks, no-op when idle); `preview(note)` (ignored when unavailable; the first preview also calls `player.load()`, and a failure there → `unavailable` + error toast, just like a failed Play); `dismissError()`.
+  - `usePlayback(song: Song): Playback` with `interface Playback { status; playing: boolean /* playing or loading */; currentEventIndex: number | null; error: string | null; bpm: number; setBpm(bpm: number): void; play(fromIndex?: number): void; stop(): void; preview(note: string): void; dismissError(): void }`. Any change to `song.events` or `song.timeSignature` while playing stops playback (title edits don't); unmount stops. On mount it calls `player.prefetch()` so Tone's code is already there when the first Play/preview gesture needs to resume audio.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -349,10 +349,30 @@ describe('PlaybackController', () => {
     expect(controller.getSnapshot()).toMatchObject({ status: 'unavailable', error: null });
   });
 
-  it('passes previews through', () => {
+  it('passes previews through, starting the load on the first one', async () => {
     const player = new FakeNotePlayer();
-    new PlaybackController(player).preview('G4');
-    expect(player.calls).toEqual([{ kind: 'preview', note: 'G4' }]);
+    const controller = new PlaybackController(player);
+    controller.preview('G4');
+    controller.preview('A4');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(player.calls).toEqual([
+      { kind: 'preview', note: 'G4' },
+      { kind: 'load' },
+      { kind: 'preview', note: 'A4' },
+    ]);
+    expect(controller.getSnapshot().status).toBe('idle');
+  });
+
+  it('reports audio that fails to load on a preview, not only on Play', async () => {
+    const player = new FakeNotePlayer({ failLoad: true });
+    const controller = new PlaybackController(player);
+    controller.preview('G4');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(controller.getSnapshot()).toEqual({
+      status: 'unavailable',
+      currentEventIndex: null,
+      error: AUDIO_UNAVAILABLE_MESSAGE,
+    });
   });
 
   it('does nothing for an empty song', async () => {
@@ -396,6 +416,8 @@ export class PlaybackController {
   private readonly listeners = new Set<() => void>();
   /** Bumped by every play/stop so callbacks from an older run are ignored. */
   private run = 0;
+  /** A preview has already asked the player to load (so a load failure is reported once). */
+  private previewLoadStarted = false;
 
   constructor(private readonly player: NotePlayer) {}
 
@@ -449,6 +471,17 @@ export class PlaybackController {
   preview(note: string): void {
     if (this.snapshot.status === 'unavailable') return;
     this.player.preview(note);
+    if (this.previewLoadStarted) return;
+    this.previewLoadStarted = true;
+    this.player.load().catch(() => {
+      if (this.snapshot.status === 'unavailable') return;
+      this.run++;
+      this.set({
+        status: 'unavailable',
+        currentEventIndex: null,
+        error: AUDIO_UNAVAILABLE_MESSAGE,
+      });
+    });
   }
 
   dismissError(): void {
@@ -465,7 +498,7 @@ export class PlaybackController {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `timeout 120 npx vitest run src/app/playback`
-Expected: PASS (7 tests).
+Expected: PASS (8 tests).
 
 - [ ] **Step 5: Add the hook**
 
@@ -507,6 +540,8 @@ export function usePlayback(song: Song): Playback {
   }, [song.events, song.timeSignature, controller]);
 
   useEffect(() => () => controller.stop(), [controller]);
+  // Fetch Tone's code now (no sound yet), so the first Play can resume audio inside the gesture.
+  useEffect(() => player.prefetch(), [player]);
 
   const play = useCallback(
     (fromIndex = 0) => void controller.play(song, bpm, fromIndex),

@@ -13,7 +13,7 @@ From here on every task also runs the e2e suite (sandbox disabled for that comma
 - Produces (used by Tasks 14, 15, 20):
   - `type ToastTone = 'error' | 'info'`; `interface ToastMessage { id: number; text: string; tone: ToastTone }`; `useToast(): { toast: ToastMessage | null; show(text: string, tone?: ToastTone): void; dismiss(): void }` (`show` defaults to `'error'`; every call gets a new id so the same text restarts the timer).
   - `TOAST_MS = 4000`; `<Toast message onDismiss />` — always renders `<div class="toast-region" role="status" aria-live="polite">`; a message renders `<div class="toast {tone}" data-testid="toast">text <button>OK</button></div>` and auto-dismisses after `TOAST_MS`.
-  - `<PlaybackControls status canPlay bpm onPlay onStop onBpm />` — idle: "▶ Play" (`aria-label="Play"`, disabled when `!canPlay` or unavailable, `title` = `AUDIO_UNAVAILABLE_MESSAGE` when unavailable, else "Play (Space)"); playing: "■ Stop" (`aria-label="Stop"`); loading: "Loading piano…" (`aria-label="Stop"`, pressing it cancels); tempo `<input type="range" aria-label="Tempo" min=60 max=160 step=5>` between 🐢 and 🐇.
+  - `<PlaybackControls status canPlay bpm onPlay onStop onBpm />` — idle: "▶ Play" (`aria-label="Play"`, disabled when `!canPlay` or unavailable, `title` = `AUDIO_UNAVAILABLE_MESSAGE` when unavailable, else "Play (Space)"); playing: "■ Stop" (`aria-label="Stop"`); loading: "Loading piano…" (`aria-label="Loading piano, press to cancel"`, pressing it cancels); tempo `<input type="range" aria-label="Tempo" min=60 max=160 step=5>` between 🐢 and 🐇.
   - `HELP_LINES: readonly string[]`; `<HelpPopover />` — "?" button (`aria-label="Help"`, `aria-expanded`), opens `role="dialog"` `aria-label="How to use the editor"` listing `HELP_LINES`; closes on the button, Esc (without letting Esc reach the editor shortcuts) or a pointerdown outside.
 
 - [ ] **Step 1: Write the failing tests**
@@ -74,6 +74,7 @@ describe('PlaybackControls', () => {
   it('shows Stop while playing and a loading label while the piano loads', () => {
     expect(render({ status: 'playing' })).toContain('■ Stop');
     expect(render({ status: 'loading' })).toContain('Loading piano…');
+    expect(render({ status: 'loading' })).toContain('aria-label="Loading piano, press to cancel"');
   });
   it('disables Play with an explanation when audio is unavailable', () => {
     const html = render({ status: 'unavailable' });
@@ -210,7 +211,12 @@ export function PlaybackControls({
   return (
     <div className="playback-controls" role="group" aria-label="Playback">
       {busy ? (
-        <button type="button" className="play-button" onClick={onStop} aria-label="Stop">
+        <button
+          type="button"
+          className="play-button"
+          onClick={onStop}
+          aria-label={status === 'loading' ? 'Loading piano, press to cancel' : 'Stop'}
+        >
           {status === 'loading' ? 'Loading piano…' : '■ Stop'}
         </button>
       ) : (

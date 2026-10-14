@@ -11,8 +11,8 @@
 **Interfaces:**
 - Consumes: reducer actions `select`, `setCursor`, `changeSelectedPitch`, `restSelected`, `dismissError` and `state.selection` / `state.errorMeasure` (Tasks 5–7); `layoutSong`, `compactSheet`, `editorHitTargets`, `cursorPosition`, `measureBox`, `DEFAULT_RENDER_OPTIONS` (layout barrel, Tasks 3–4); `SheetSvg` (Task 13); `Toast`, `useToast`, `HelpPopover` (Task 12); v1 `DurationPicker`, `FruitKeyboard`, `useEditorKeyboard(dispatch)` (unchanged until Task 17).
 - Produces (used by Tasks 15–22):
-  - `EDITOR_OPTIONS` (= `DEFAULT_RENDER_OPTIONS`) and `<EditorSheet song cursor selection playing flashMeasure onNotePointerDown onGapClick />` (`EditorSheetProps`): lays out the song (memoised on `song`), renders `SheetSvg` inside `<div class="sheet-scroll" data-testid="song-pages">` (the v1 e2e helper `fruits()` keeps working), passes the cursor only when nothing is selected, and turns `flashMeasure` into a `measureBox`. A layout error renders the v1 inline alert.
-  - `EditorPage` layout: `.editor` = `.editor-topbar` (title, time signature, Undo, Redo, Save, Print) + `EditorSheet` + `.editor-dock` (toast region, `.dock-row` with `DurationPicker` and `HelpPopover`, then `FruitKeyboard`). The v1 alert and tip line are gone. Reducer errors → `toast.show(error)` + 1.2 s measure flash, then `dismissError`; save errors → toast. Fruit keys call `changeSelectedPitch` when a note is selected, else `insertNote`; Rest calls `restSelected` / `insertRest`; the length buttons show the selected event's length. Pointerdown on a note column dispatches `select`; clicking a gap dispatches `setCursor`.
+  - `EDITOR_OPTIONS` (= `DEFAULT_RENDER_OPTIONS`) and `<EditorSheet song cursor selection playing flashMeasure onNotePointerDown onGapClick onBackgroundPointerDown? />` (`EditorSheetProps`): lays out the song (memoised on `song`), renders `SheetSvg` inside `<div class="sheet-scroll" data-testid="song-pages">` (the v1 e2e helper `fruits()` keeps working), passes the cursor only when nothing is selected, and turns `flashMeasure` into a `measureBox`. A pointerdown anywhere on the sheet that is not a note column or gap (margins, clef, between systems, but not the scrollbar) calls `onBackgroundPointerDown`. A layout error renders the v1 inline alert.
+  - `EditorPage` layout: `.editor` = `.editor-topbar` (title, time signature, Undo, Redo, Save, Print) + `EditorSheet` + `.editor-dock` (toast region, `.dock-row` with `DurationPicker` and `HelpPopover`, then `FruitKeyboard`). The v1 alert and tip line are gone. Reducer errors → `toast.show(error)` + 1.2 s measure flash, then `dismissError`; save errors → toast. Fruit keys call `changeSelectedPitch` when a note is selected, else `insertNote`; Rest calls `restSelected` / `insertRest`; the length buttons show the selected event's length. Pointerdown on a note column dispatches `select`; clicking a gap dispatches `setCursor`; a press on blank sheet dispatches `clearSelection` (the mouse way to let go of a note, besides Esc).
   - `App` root gets class `app app-editor` on `#/new` and `#/edit/…` (full-height flex layout: only the sheet scrolls).
 
 - [ ] **Step 1: Change the v1 e2e test to expect the toast (failing test)**
@@ -64,6 +64,8 @@ export interface EditorSheetProps {
   flashMeasure: number | null;
   onNotePointerDown: (eventIndex: number, e: ReactPointerEvent<SVGRectElement>) => void;
   onGapClick: (index: number) => void;
+  /** A press on blank sheet: margins, clef, between systems. */
+  onBackgroundPointerDown?: () => void;
 }
 
 /** The scrolling sheet in the middle of the editor. */
@@ -75,6 +77,7 @@ export function EditorSheet({
   flashMeasure,
   onNotePointerDown,
   onGapClick,
+  onBackgroundPointerDown,
 }: EditorSheetProps) {
   const view = useMemo(() => {
     try {
@@ -97,8 +100,16 @@ export function EditorSheet({
       </p>
     );
   }
+
+  const onSheetPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest('[data-kind="note-target"], [data-kind="gap-target"]')) return;
+    // On the scroller itself, a press right of its content box is on the scrollbar.
+    if (target === e.currentTarget && e.nativeEvent.offsetX >= e.currentTarget.clientWidth) return;
+    onBackgroundPointerDown?.();
+  };
   return (
-    <div className="sheet-scroll" data-testid="song-pages">
+    <div className="sheet-scroll" data-testid="song-pages" onPointerDown={onSheetPointerDown}>
       <SheetSvg
         sheet={view.sheet}
         targets={view.targets}
@@ -243,6 +254,7 @@ function EditorWorkspace({
 
   const onNotePointerDown = useCallback((index: number) => dispatch({ type: 'select', index }), []);
   const onGapClick = useCallback((index: number) => dispatch({ type: 'setCursor', index }), []);
+  const onBackgroundPointerDown = useCallback(() => dispatch({ type: 'clearSelection' }), []);
 
   const save = async (): Promise<Song | undefined> => {
     setSaving(true);
@@ -332,6 +344,7 @@ function EditorWorkspace({
         playing={null}
         flashMeasure={flashMeasure}
         onNotePointerDown={onNotePointerDown}
+        onBackgroundPointerDown={onBackgroundPointerDown}
         onGapClick={onGapClick}
       />
 
@@ -608,12 +621,14 @@ Expected: PASS — all 25 tests, including the updated toast test. (`fruits()` s
 
 - [ ] **Step 7: Look at it in the shared debug Chrome**
 
+Load the `browser-automation-gcdb` skill first (this check clicks and types in the shared browser). Then:
+
 ```bash
 curl -fsS --max-time 2 http://127.0.0.1:9222/json/version || echo "ask the user to run: ! gcdb"
-timeout 5 lsof -iTCP:5173 -sTCP:LISTEN || (npm run dev -- --port 5173 > /tmp/note-chomp-dev.log 2>&1 &)
+timeout 5 lsof -iTCP:5173 -sTCP:LISTEN || echo "dev server not running"
 ```
 
-With the Playwright MCP browser tools, open a **new tab** at `http://localhost:5173/#/edit/builtin-ode-to-joy` at 1280×800 and check: the top bar is at the top, the dock (lengths, ?, fruit keys) at the bottom, only the sheet scrolls, systems have no paper margins or legend; clicking a fruit shows a blue glow and hides the pink cursor; a fruit key then changes that note; clicking between notes brings the cursor back; an impossible length shows a toast above the dock and a red flash on the measure. Close only the tab you opened.
+If the dev server is not running, start `npm run dev -- --port 5173` with the Bash tool's `run_in_background: true` (not a shell `&`, which orphans the process) and wait until `curl -fsS --max-time 2 http://localhost:5173/ > /dev/null` succeeds. With the Playwright MCP browser tools, open a **new tab** at `http://localhost:5173/#/edit/builtin-ode-to-joy` at 1280×800 and check: the top bar is at the top, the dock (lengths, ?, fruit keys) at the bottom, only the sheet scrolls, systems have no paper margins or legend; clicking a fruit shows a blue glow and hides the pink cursor; a fruit key then changes that note; clicking between notes brings the cursor back; selecting a note and then clicking the blank margin beside the staff lets go of it (glow gone, cursor back); an impossible length shows a toast above the dock and a red flash on the measure. Close only the tab you opened.
 
 - [ ] **Step 8: Verify everything and commit**
 

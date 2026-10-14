@@ -13,10 +13,10 @@
 - Consumes: `ScheduledEvent`, `scheduleEnd`, `buildSchedule` (Task 2).
 - Produces (used by Tasks 9–11, 15, 23–24):
   - `interface PlaybackHandlers { onEvent(eventIndex: number): void; onEnd(): void }`
-  - `interface NotePlayer { load(): Promise<void>; play(schedule: ScheduledEvent[], handlers: PlaybackHandlers): Promise<void>; stop(): void; preview(note: string): void }` (spec §2.3)
+  - `interface NotePlayer { prefetch(): void; load(): Promise<void>; play(schedule: ScheduledEvent[], handlers: PlaybackHandlers): Promise<void>; stop(): void; preview(note: string): void }` (spec §2.3, plus `prefetch`: fetch the audio code without touching the AudioContext, so the first gesture can resume audio synchronously — iOS Safari only allows that inside the gesture)
   - `PREVIEW_SECONDS = 0.4`
   - `type PlayerCall = { kind: 'load' } | { kind: 'play'; notes: (string | null)[] } | { kind: 'stop' } | { kind: 'preview'; note: string }`
-  - `class FakeNotePlayer implements NotePlayer` — `constructor(options?: { failLoad?: boolean })`, `readonly calls: PlayerCall[]`; `load()` records `{kind:'load'}` once per (successful or pending) load and rejects with `FAKE_LOAD_ERROR` when `failLoad` (a later call tries again); `play()` awaits `load()`, records the notes, then fires `onEvent` at each `time` and `onEnd` at `scheduleEnd` with real `setTimeout`s; `stop()` cancels them and records `{kind:'stop'}`; `preview()` records `{kind:'preview', note}`.
+  - `class FakeNotePlayer implements NotePlayer` — `constructor(options?: { failLoad?: boolean })`, `readonly calls: PlayerCall[]`; `load()` records `{kind:'load'}` once per (successful or pending) load and rejects with `FAKE_LOAD_ERROR` when `failLoad` (a later call tries again); `play()` awaits `load()`, records the notes, then fires `onEvent` at each `time` and `onEnd` at `scheduleEnd` with real `setTimeout`s; `stop()` cancels them and records `{kind:'stop'}`; `preview()` records `{kind:'preview', note}`; `prefetch()` does nothing (and records nothing).
   - `FAKE_LOAD_ERROR = 'Fake audio failed to load'`
   - ESLint: `src/audio/**` may not import React, `formats`, `render`, `export`, `persistence`, `app`, `songs`, `scripts`; `core`, `formats`, `render`, `export`, `persistence`, `songs` and `main.tsx` may not import `tone`/`tone/*`; `core`/`formats`/`render`/`export`/`persistence` may not import `audio`.
 
@@ -104,6 +104,11 @@ export interface PlaybackHandlers {
 
 /** Plays notes. Implementations: ToneNotePlayer (real piano), FakeNotePlayer (tests). */
 export interface NotePlayer {
+  /**
+   * Fetch the audio code in the background (no sound, no AudioContext), so a later gesture can
+   * resume audio synchronously. Never throws.
+   */
+  prefetch(): void;
   /** Idempotent; the first call loads the instrument. Rejects if audio is unavailable. */
   load(): Promise<void>;
   /** Plays a schedule from its start, replacing anything already playing. */
@@ -144,6 +149,9 @@ export class FakeNotePlayer implements NotePlayer {
   private loading: Promise<void> | null = null;
 
   constructor(private readonly options: FakeNotePlayerOptions = {}) {}
+
+  /** Nothing to fetch; not recorded, so call logs only show what the user did. */
+  prefetch(): void {}
 
   load(): Promise<void> {
     if (!this.loading) {

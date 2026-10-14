@@ -12,7 +12,7 @@ Spec §7. These specs lock in behaviour built in Tasks 14–22, so they are expe
 - Consumes: `test`, `expect`, `Page`, `fruits`, `openEditor` (Task 10); note-column names "Note n: …" (Task 13); `data-kind="selection-glow"` / `"cursor"` / `"gap-target"` (Task 13); `data-testid="selection-announcer"` (Task 18); `window.__NOTE_CHOMP_AUDIO_LOG__` (Task 10).
 - Produces: `noteButton(page: Page, n: number): Locator` (1-based) — used by Tasks 24–25.
 
-Covers spec §7: click selects (glow + aria), fruit key changes pitch, length button changes duration, Backspace deletes the selection, Esc deselects, ←/→ navigation, ↑/↓ nudge, **mouse drag** up two steps changes E4→G4 (one Undo step), plus gap click → cursor.
+Covers spec §7: click selects (glow + aria), fruit key changes pitch, length button changes duration, Backspace deletes the selection, Esc deselects, ←/→ navigation, ↑/↓ nudge, **mouse drag** up two steps changes E4→G4 (one Undo step), plus gap click → cursor, a press on blank sheet deselects, and pressing a note while the title box has focus hands the keys back to the editor.
 
 - [ ] **Step 1: Add the helper**
 
@@ -129,6 +129,28 @@ test('dragging a selected note up two steps turns E4 into G4', async ({ page }) 
   await expect(fruits(page).first()).toHaveAttribute('data-pitch', 'E');
 });
 
+test('clicking a note while typing a title hands the letter keys back to the note', async ({
+  page,
+}) => {
+  await openEditor(page, 'cde');
+  await page.getByLabel('Song title').fill('X');
+  await noteButton(page, 2).click();
+  await page.keyboard.press('g');
+  await expect(fruits(page).nth(1)).toHaveAttribute('data-pitch', 'G');
+  await expect(page.getByLabel('Song title')).toHaveValue('X');
+});
+
+test('pressing blank sheet beside the staff lets go of the selected note', async ({ page }) => {
+  await openEditor(page, 'cde');
+  await noteButton(page, 2).click();
+  await expect(glow(page)).toHaveCount(1);
+  const sheet = await page.getByTestId('song-pages').boundingBox();
+  if (!sheet) throw new Error('sheet not visible');
+  await page.mouse.click(sheet.x + 4, sheet.y + 4); // the scroller's padding, outside the svg
+  await expect(glow(page)).toHaveCount(0);
+  await expect(cursor(page)).toHaveCount(1);
+});
+
 test('clicking between notes places the cursor there', async ({ page }) => {
   await openEditor(page, 'ce');
   const gap = page.locator('[data-kind="gap-target"][data-gap-index="1"]');
@@ -143,13 +165,13 @@ test('clicking between notes places the cursor there', async ({ page }) => {
 - [ ] **Step 3: Run it**
 
 Run (sandbox disabled): `timeout 300 npx playwright test e2e/selection.spec.ts --repeat-each=3`
-Expected: `24 passed` (8 tests × 3), no flakes.
+Expected: `30 passed` (10 tests × 3), no flakes.
 
 - [ ] **Step 4: Verify everything and commit**
 
 ```bash
 npm run format && npm run lint && npm run typecheck && timeout 300 npm test
-timeout 600 npm run test:e2e   # sandbox disabled → 33 passed
+timeout 600 npm run test:e2e   # sandbox disabled → 35 passed
 git add e2e/fixtures.ts e2e/selection.spec.ts
 git commit -m "test(e2e): select, change, nudge, navigate, delete and drag notes"
 ```
@@ -164,7 +186,7 @@ git commit -m "test(e2e): select, change, nudge, navigate, delete and drag notes
 **Interfaces:**
 - Consumes: fixtures (Tasks 10, 23); Play/Stop buttons (`aria-label` "Play"/"Stop") and the `Tempo` slider (Task 12); `data-kind="playing-halo"` (Task 13); fake audio log entries `{ kind: 'play', notes }`, `{ kind: 'preview', note }`, `{ kind: 'stop' }` (Task 8); the `'fail-load'` switch (Task 10); `AUDIO_UNAVAILABLE_MESSAGE` text (Task 11).
 
-Covers spec §7 / §4 / §5: Play highlights events in order and returns to Play, Stop clears at once, Space toggles, play from the selection, fruit-key preview, and audio failure (toast + disabled Play with tooltip, editing continues).
+Covers spec §7 / §4 / §5: Play highlights events in order and returns to Play, Stop clears at once, Space toggles (also right after tapping a fruit key, and after moving the tempo slider), play from the selection, fruit-key preview, and audio failure (toast + disabled Play with tooltip, editing continues). The failure surfaces on the first preview, before Play is ever pressed (Task 11); the Play-path failure is covered by the controller unit test.
 
 - [ ] **Step 1: Write the spec**
 
@@ -181,7 +203,8 @@ declare global {
 
 const halo = (page: Page) => page.locator('[data-kind="playing-halo"]');
 const playButton = (page: Page) => page.getByRole('button', { name: 'Play', exact: true });
-const stopButton = (page: Page) => page.getByRole('button', { name: 'Stop', exact: true });
+/** "Stop" while playing; "Loading piano, press to cancel" while the piano loads (same button). */
+const stopButton = (page: Page) => page.getByRole('button', { name: /^(Stop|Loading piano)/ });
 
 /** Record the order in which events light up. */
 const recordHighlights = (page: Page) =>
@@ -231,6 +254,26 @@ test('Space starts and stops playback', async ({ page }) => {
   await expect(halo(page)).toHaveCount(0);
 });
 
+test('Space plays after tapping a fruit key, instead of tapping it again', async ({ page }) => {
+  await openEditor(page, 'cdefg');
+  await page.getByRole('button', { name: 'Add C4' }).click();
+  await expect(fruits(page)).toHaveCount(6);
+  await page.keyboard.press(' ');
+  await expect(stopButton(page)).toBeVisible();
+  await expect(fruits(page)).toHaveCount(6);
+});
+
+test('editor keys still work after moving the tempo slider', async ({ page }) => {
+  await openEditor(page, 'cdefgabc');
+  await page.getByLabel('Tempo').fill('120');
+  await page.keyboard.press(' ');
+  await expect(stopButton(page)).toBeVisible();
+  await page.keyboard.press(' ');
+  await expect(playButton(page)).toBeVisible();
+  await page.keyboard.press('d');
+  await expect(fruits(page)).toHaveCount(9);
+});
+
 test('plays from the selected note', async ({ page }) => {
   await openEditor(page, 'cde');
   await noteButton(page, 2).click();
@@ -250,7 +293,7 @@ test('if the piano cannot load, editing keeps working and Play explains', async 
     window.__NOTE_CHOMP_FAKE_AUDIO__ = 'fail-load';
   });
   await openEditor(page, 'ce');
-  await playButton(page).click();
+  // Typing "c" previewed the note, which already tried (and failed) to load the piano.
   await expect(page.getByTestId('toast')).toContainText("couldn't load the piano sounds");
   await expect(playButton(page)).toBeDisabled();
   await expect(playButton(page)).toHaveAttribute('title', /playback is off/);
@@ -264,13 +307,13 @@ test('if the piano cannot load, editing keeps working and Play explains', async 
 - [ ] **Step 2: Run it**
 
 Run (sandbox disabled): `timeout 300 npx playwright test e2e/playback.spec.ts --repeat-each=3`
-Expected: `18 passed`.
+Expected: `24 passed` (8 tests × 3).
 
 - [ ] **Step 3: Verify everything and commit**
 
 ```bash
 npm run format && npm run lint && npm run typecheck && timeout 300 npm test
-timeout 600 npm run test:e2e   # sandbox disabled → 39 passed
+timeout 600 npm run test:e2e   # sandbox disabled → 43 passed
 git add e2e/playback.spec.ts
 git commit -m "test(e2e): playback highlight, stop, Space, play from selection, previews, audio failure"
 ```
@@ -452,7 +495,7 @@ test('copying a starter song twice numbers the second copy', async ({ page }) =>
 });
 ```
 
-(`page.reload()` does not run `beforeunload` handlers in Playwright, so reloading a dirty editor is allowed and the draft survives in localStorage. The ABC in the warning test has full bars, so the only warning is the collapsed one.)
+(Playwright auto-accepts `beforeunload` dialogs when no dialog listener is registered, so reloading a dirty editor proceeds and the draft survives in localStorage. Adding a `page.on('dialog')` listener to these tests would change that.) The ABC in the warning test has full bars, so the only warning is the collapsed one.)
 
 - [ ] **Step 3: Run them**
 
@@ -463,7 +506,7 @@ Expected: `22 passed`.
 
 ```bash
 npm run format && npm run lint && npm run typecheck && timeout 300 npm test
-timeout 600 npm run test:e2e   # sandbox disabled → 50 passed
+timeout 600 npm run test:e2e   # sandbox disabled → 54 passed
 git add e2e/layout.spec.ts e2e/quickfixes.spec.ts
 git commit -m "test(e2e): editor layout, toast, help and the usability quick fixes"
 ```
@@ -510,8 +553,8 @@ with:
 
 ```md
 - `src/export/pdf/` — vector PDF via jsPDF + svg2pdf.js.
-- `src/audio/` — playback behind a `NotePlayer` interface: the Tone.js piano (`ToneNotePlayer`, loaded
-  on first use) and a fake used by the tests.
+- `src/audio/` — playback behind a `NotePlayer` interface: the Tone.js piano (`ToneNotePlayer`; Tone's
+  code is fetched when the editor opens, the piano samples on first use) and a fake used by the tests.
 ```
 
 **Edit `README.md`** — replace:
@@ -547,23 +590,27 @@ timeout 300 npm run build && ! grep -rq APE_KEY dist && echo "no key in bundle"
 lsof -iTCP:5179 -sTCP:LISTEN; timeout 600 npm run test:e2e   # sandbox disabled
 ```
 
-Expected: format/lint/typecheck clean; all unit tests pass (≈ 450); build succeeds with a separate Tone chunk and `dist/samples/piano/` (11 mp3 + ATTRIBUTION.txt); "no key in bundle"; **50** e2e tests pass.
+Expected: format/lint/typecheck clean; all unit tests pass (≈ 450); build succeeds with a separate Tone chunk and `dist/samples/piano/` (11 mp3 + ATTRIBUTION.txt); "no key in bundle"; **54** e2e tests pass.
 
 - [ ] **Step 3: Real-audio check in the shared debug Chrome (spec §7 "Manual")**
 
+Load the `browser-automation-gcdb` skill first. Then:
+
 ```bash
 curl -fsS --max-time 2 http://127.0.0.1:9222/json/version || echo "ask the user to run: ! gcdb"
-timeout 5 lsof -iTCP:5173 -sTCP:LISTEN || (npm run dev -- --port 5173 > /tmp/note-chomp-dev.log 2>&1 &)
+timeout 5 lsof -iTCP:5173 -sTCP:LISTEN || echo "dev server not running"
 ```
 
-Load the `browser-automation-gcdb` skill, open a **new tab** at `http://localhost:5173/#/edit/builtin-jingle-bells` (1280×800) and confirm, with `browser_evaluate` / screenshots where useful:
+If the dev server is not running, start `npm run dev -- --port 5173` with the Bash tool's `run_in_background: true` (not a shell `&`). Open a **new tab** at `http://localhost:5173/#/edit/builtin-jingle-bells` (1280×800) and confirm, with `browser_evaluate` / screenshots where useful:
 
 1. ▶ Play → "Loading piano…" then "■ Stop"; the piano is audible (ask the user to confirm sound); the yellow halo walks through the notes in order and the sheet scrolls to follow; at the end the button returns to "▶ Play".
 2. Space stops and starts playback; ■ stops instantly.
 3. Click the 5th note: blue glow, no pink cursor, a short preview; ▶ Play starts from that note.
 4. Drag a selected note up two steps: the pitch changes step by step with previews; one Undo restores it.
 5. Type 30 notes on `#/new`: the newest note stays visible; the toast for an impossible length appears above the dock and fades; "?" opens the help.
-6. In DevTools Network (or `performance.getEntriesByType('resource')`), Tone's chunk and the 11 sample files load only after the first Play/preview.
+6. In DevTools Network (or `performance.getEntriesByType('resource')`), Tone's chunk loads when the editor opens (prefetch, before any sound) and the 11 sample files load only after the first Play/preview. Opening the songbook (`#/`) loads neither.
+7. Move the tempo slider, then press Space: playback starts (the slider does not swallow the key). Tap a fruit key, then press Space: playback starts and no extra note is added.
+8. Let a song play to the end with the tab in the background (switch to another tab and back): the button is back to "▶ Play".
 
 Close only the tab you opened. Note any problem as a follow-up task instead of hand-waving it.
 

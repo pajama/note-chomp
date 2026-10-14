@@ -13,7 +13,7 @@ From here on every task also runs the e2e suite (sandbox disabled for that comma
 - Produces (used by Tasks 14, 16, 18):
   - `describeEvent(event: MusicEvent, index: number, flags?: { selected?: boolean; playing?: boolean }): string` — `"Note 3: G, quarter note"`, `"Note 4: eighth rest"`, plus `", selected"` / `", playing"`.
   - `SELECTION_COLOR = '#5C6BC0'`, `PLAYING_COLOR = '#FFCA28'`, `CURSOR_COLOR = '#FF4081'`, `FLASH_COLOR = '#EF5350'`
-  - `<SheetSvg sheet targets events title cursor? selection playing flash? onNotePointerDown? onGapClick? />` (`SheetSvgProps`): one `<svg class="sheet-svg" role="group" aria-label="{title}: sheet music">` with each system in `<g data-kind="system" transform="translate(0 offsetY)">`, drawn back to front: measure flash (`data-kind="measure-flash"`), playing halo (`data-kind="playing-halo"`, `data-event-index`), selection glow (`data-kind="selection-glow"`, `data-event-index`), the system items, the cursor (`data-kind="cursor"`, only if `cursor` is given and on this system), then transparent gap targets (`data-kind="gap-target"`, `data-gap-index`, `aria-hidden`, click → `onGapClick(index)`) and note targets (`data-kind="note-target"`, `data-event-index`, `role="button"`, `aria-label` from `describeEvent`, pointerdown → `onNotePointerDown(eventIndex, event)`).
+  - `<SheetSvg sheet targets events title cursor? selection playing flash? onNotePointerDown? onGapClick? />` (`SheetSvgProps`): one `<svg class="sheet-svg" role="group" aria-label="{title}: sheet music">` with each system in `<g data-kind="system" transform="translate(0 offsetY)">`, drawn back to front: measure flash (`data-kind="measure-flash"`), playing halo (`data-kind="playing-halo"`, `data-event-index`), selection glow (`data-kind="selection-glow"`, `data-event-index`), the system items, the cursor (`data-kind="cursor"`, only if `cursor` is given and on this system), then transparent gap targets (`data-kind="gap-target"`, `data-gap-index`, `aria-hidden`, click → `onGapClick(index)`) and note targets (`data-kind="note-target"`, `data-event-index`, `role="button"`, `tabIndex={-1}`, `aria-label` from `describeEvent`, pointerdown → `onNotePointerDown(eventIndex, event)`). Known gap: the note buttons are focusable only programmatically (`tabIndex=-1`, so Tab does not walk 100+ notes); keyboard users reach notes with ←/→ and hear them through the selection live region (Task 18).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -91,6 +91,7 @@ describe('SheetSvg', () => {
     const svg = render();
     expect(count(svg, 'data-kind="note-target"')).toBe(4);
     expect(count(svg, 'role="button"')).toBe(4);
+    expect(count(svg, 'tabindex="-1"')).toBe(4);
     expect(svg).toContain('aria-label="Note 1: C, quarter note"');
     expect(svg).toContain('aria-label="Note 3: quarter rest"');
     expect(count(svg, 'data-kind="gap-target"')).toBe(5);
@@ -322,6 +323,7 @@ export function SheetSvg({
                   height={target.height}
                   fill="transparent"
                   role="button"
+                  tabIndex={-1}
                   aria-label={describeEvent(event, target.eventIndex, {
                     selected: selection === target.eventIndex,
                     playing: playing === target.eventIndex,

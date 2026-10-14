@@ -14,7 +14,7 @@ Both tasks edit `src/app/pages/EditorPage.tsx` as left by the previous task. Eac
   - `type EditorCommand = EditorAction | { type: 'togglePlayback' }`
   - `interface KeyContext { hasSelection: boolean }`
   - `keyToCommand(e: KeyInfo, ctx: KeyContext): EditorCommand | undefined` — C–B: `changeSelectedPitch` with a selection else `insertNote` (base octave 4); 1–4 lengths; `.` dot; R: `restSelected` / `insertRest`; Backspace/Delete: `deleteBackward`; ←/→: `navigate ∓1`; ↑/↓: `nudgeSelected ±1` with a selection, else `shiftOctave ±1`; Shift+↑/↓: always `shiftOctave`; Esc: `clearSelection`; Space: `togglePlayback`; Ctrl/⌘+Z / Shift+Z / Y: undo/redo.
-  - `useEditorKeyboard(onCommand: (command: EditorCommand) => void, hasSelection: boolean): void` — ignores keys typed into inputs/textareas/selects/contenteditable; leaves Space to focused buttons and links.
+  - `useEditorKeyboard(onCommand: (command: EditorCommand) => void, hasSelection: boolean): void` — ignores keys typed into text inputs/textareas/selects/contenteditable; the tempo slider (`input[type=range]`) keeps only its arrow keys; leaves Space to links and the Play / Help buttons. Space on any other focused button (a fruit key, a length, Undo…) plays: its `preventDefault()` on keydown also stops that button's own Space click, so tapping fruits and then pressing Space plays instead of adding another note.
   - In `EditorWorkspace`: `togglePlayback()` (stop if playing/loading, else play from the selection or the start) and `onCommand` (previews note keys, then dispatches).
 
 - [ ] **Step 1: Write the failing test**
@@ -152,9 +152,13 @@ export function keyToCommand(e: KeyInfo, { hasSelection }: KeyContext): EditorCo
   }
 }
 
-const TEXT_FIELDS = 'input, textarea, select, [contenteditable="true"]';
-/** Space would also press a focused button or move a slider, so leave it to them. */
-const SPACE_OWNERS = `${TEXT_FIELDS}, button, a[href]`;
+/** Keys typed here belong to the field. The tempo slider is not one: it only keeps its arrows. */
+const TEXT_FIELDS = 'input:not([type="range"]), textarea, select, [contenteditable="true"]';
+/**
+ * Space keeps its native meaning only here. Other buttons (fruit keys, lengths, Undo…) keep focus
+ * after a tap, and "tap fruits, press Space to listen" must play, not tap the fruit again.
+ */
+const SPACE_OWNERS = `${TEXT_FIELDS}, a[href], .play-button, .help-button`;
 
 export function useEditorKeyboard(
   onCommand: (command: EditorCommand) => void,
@@ -168,6 +172,7 @@ export function useEditorKeyboard(
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest(TEXT_FIELDS)) return;
+      if (target?.matches('input[type="range"]') && e.key.startsWith('Arrow')) return;
       if (e.key === ' ' && target?.closest(SPACE_OWNERS)) return;
       const command = keyToCommand(e, { hasSelection: latest.current.hasSelection });
       if (!command) return;
@@ -414,13 +419,18 @@ with:
 **Edit `src/app/components/EditorSheet.tsx`** — replace:
 
 ```tsx
-    <div className="sheet-scroll" data-testid="song-pages">
+    <div className="sheet-scroll" data-testid="song-pages" onPointerDown={onSheetPointerDown}>
 ```
 
 with:
 
 ```tsx
-    <div className="sheet-scroll" ref={scroller} data-testid="song-pages">
+    <div
+      className="sheet-scroll"
+      ref={scroller}
+      data-testid="song-pages"
+      onPointerDown={onSheetPointerDown}
+    >
 ```
 
 (`scrollIntoView?.` — jsdom/older engines may not implement it on SVG elements.)
@@ -465,7 +475,7 @@ npm run format && npm run lint && npm run typecheck && timeout 300 npm test
 timeout 600 npm run test:e2e   # sandbox disabled
 ```
 
-In the debug Chrome tab at 1280×800, type 30 notes on `#/new`: the newest note and the cursor stay visible while the sheet scrolls; play a long song (Jingle Bells): the view follows the halo.
+In the debug Chrome tab at 1280×800 (load the `browser-automation-gcdb` skill first; dev server as in Task 15 Step 3, started with `run_in_background: true`, never `&`), type 30 notes on `#/new`: the newest note and the cursor stay visible while the sheet scrolls; play a long song (Jingle Bells): the view follows the halo.
 
 ```bash
 git add src/app/editorFocus.ts src/app/editorFocus.test.ts src/app/components/EditorSheet.tsx src/app/pages/EditorPage.tsx
