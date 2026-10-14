@@ -43,3 +43,22 @@ test('the help button explains the controls', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(help).toBeHidden();
 });
+
+test('Esc closes help even when focus is elsewhere, keeps the selection, and refocuses "?"', async ({
+  page,
+}) => {
+  await openEditor(page, 'cde');
+  const helpButton = page.getByRole('button', { name: 'Help' });
+  await helpButton.click();
+  const help = page.getByRole('dialog', { name: 'How to use the editor' });
+  await expect(help).toBeVisible();
+  await noteButton(page, 2).click(); // focus leaves the popover (and closes it)
+  await expect(help).toBeHidden();
+  await helpButton.click();
+  await expect(help).toBeVisible();
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press('Escape');
+  await expect(help).toBeHidden();
+  await expect(noteButton(page, 2)).toHaveAccessibleName(/selected$/);
+  await expect(helpButton).toBeFocused();
+});

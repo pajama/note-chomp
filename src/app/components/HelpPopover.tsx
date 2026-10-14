@@ -11,6 +11,7 @@ export const HELP_LINES: readonly string[] = [
 export function HelpPopover() {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -19,22 +20,27 @@ export function HelpPopover() {
         setOpen(false);
       }
     };
+    // Capture phase, so Esc closes help before the editor sees it (and keeps the selection),
+    // wherever focus is.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+      button.current?.focus();
+    };
     window.addEventListener('pointerdown', onPointerDown);
-    return () => window.removeEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
   }, [open]);
 
   return (
-    <div
-      className="help"
-      ref={wrap}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && open) {
-          e.stopPropagation();
-          setOpen(false);
-        }
-      }}
-    >
+    <div className="help" ref={wrap}>
       <button
+        ref={button}
         type="button"
         className="secondary help-button"
         aria-label="Help"
