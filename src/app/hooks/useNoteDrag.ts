@@ -65,81 +65,93 @@ export function useNoteDrag({
   const cleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => cleanup.current?.(), []);
 
-  return useCallback((eventIndex: number, e: ReactPointerEvent<SVGRectElement>) => {
-    const { events: current, selection } = latest.current;
-    const event = current[eventIndex];
-    if (!event || e.button !== 0) return;
-    const draggable = canDrag(e.pointerType, selection === eventIndex);
-    // preventDefault below stops the browser moving focus, so leave any text field ourselves.
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && active.closest('input, textarea, select')) active.blur();
-    e.preventDefault();
-    const choose = () => {
-      latest.current.dispatch({ type: 'select', index: eventIndex });
-      if (event.kind === 'note') latest.current.preview(toNoteName(event.pitch, event.octave));
-    };
-    cleanup.current?.();
-    if (!draggable) {
-      // A finger on a note that isn't selected: a tap selects it on release. A swipe scrolls the
-      // sheet instead (the column is `pan-y`), which ends the press in pointercancel: no select.
-      const onUp = (u: PointerEvent) => {
-        if (u.pointerId !== e.pointerId) return;
-        cleanup.current?.();
-        if (u.type === 'pointerup') choose();
+  /** True from the moment a press passes the drag threshold until it ends. */
+  const isDragging = useCallback(() => press.current?.dragging === true, []);
+
+  const onNotePointerDown = useCallback(
+    (eventIndex: number, e: ReactPointerEvent<SVGRectElement>) => {
+      const { events: current, selection } = latest.current;
+      const event = current[eventIndex];
+      if (!event || e.button !== 0) return;
+      const draggable = canDrag(e.pointerType, selection === eventIndex);
+      // preventDefault below stops the browser moving focus, so leave any text field ourselves.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active.closest('input, textarea, select')) active.blur();
+      e.preventDefault();
+      const choose = () => {
+        latest.current.dispatch({ type: 'select', index: eventIndex });
+        if (event.kind === 'note') latest.current.preview(toNoteName(event.pitch, event.octave));
       };
-      window.addEventListener('pointerup', onUp);
-      window.addEventListener('pointercancel', onUp);
+      cleanup.current?.();
+      if (!draggable) {
+        // A finger on a note that isn't selected: a tap selects it on release. A swipe scrolls the
+        // sheet instead (the column is `pan-y`), which ends the press in pointercancel: no select.
+        const onUp = (u: PointerEvent) => {
+          if (u.pointerId !== e.pointerId) return;
+          cleanup.current?.();
+          if (u.type === 'pointerup') choose();
+        };
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+        cleanup.current = () => {
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
+          cleanup.current = null;
+        };
+        return;
+      }
+      choose();
+      try {
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      } catch {
+        // The pointer is already gone (or synthetic): the window listeners below still follow it.
+      }
+      press.current = {
+        pointerId: e.pointerId,
+        startY: e.clientY,
+        spacePx: staffSpacePx(e.currentTarget.ownerSVGElement, latest.current.staffSpaceMm),
+        event,
+        dragging: false,
+        steps: 0,
+      };
+
+      const onMove = (m: PointerEvent) => {
+        const p = press.current;
+        if (!p || m.pointerId !== p.pointerId || p.event.kind !== 'note') return;
+        const dy = m.clientY - p.startY;
+        if (!p.dragging && Math.abs(dy) <= DRAG_THRESHOLD_PX) return;
+        p.dragging = true;
+        const steps = dragSteps(dy, p.spacePx);
+        if (steps === p.steps) return;
+        p.steps = steps;
+        latest.current.dispatch({ type: 'dragSelected', steps });
+        const moved = clampedStepPitch(p.event.pitch, p.event.octave, steps);
+        latest.current.preview(toNoteName(moved.pitch, moved.octave));
+      };
+      const onEnd = (u: PointerEvent) => {
+        const p = press.current;
+        if (!p || u.pointerId !== p.pointerId) return;
+        if (p.dragging) latest.current.dispatch({ type: 'endDrag' });
+        press.current = null;
+        cleanup.current?.();
+      };
+      // Where `touch-action: none` on an SVG child is ignored, a vertical drag would scroll the
+      // sheet and end in pointercancel after one step; cancelling touchmove keeps the drag ours.
+      const onTouchMove = (t: TouchEvent) => t.preventDefault();
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onEnd);
+      window.addEventListener('pointercancel', onEnd);
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
       cleanup.current = () => {
-        window.removeEventListener('pointerup', onUp);
-        window.removeEventListener('pointercancel', onUp);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onEnd);
+        window.removeEventListener('pointercancel', onEnd);
+        window.removeEventListener('touchmove', onTouchMove);
         cleanup.current = null;
       };
-      return;
-    }
-    choose();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    press.current = {
-      pointerId: e.pointerId,
-      startY: e.clientY,
-      spacePx: staffSpacePx(e.currentTarget.ownerSVGElement, latest.current.staffSpaceMm),
-      event,
-      dragging: false,
-      steps: 0,
-    };
+    },
+    [],
+  );
 
-    const onMove = (m: PointerEvent) => {
-      const p = press.current;
-      if (!p || m.pointerId !== p.pointerId || p.event.kind !== 'note') return;
-      const dy = m.clientY - p.startY;
-      if (!p.dragging && Math.abs(dy) <= DRAG_THRESHOLD_PX) return;
-      p.dragging = true;
-      const steps = dragSteps(dy, p.spacePx);
-      if (steps === p.steps) return;
-      p.steps = steps;
-      latest.current.dispatch({ type: 'dragSelected', steps });
-      const moved = clampedStepPitch(p.event.pitch, p.event.octave, steps);
-      latest.current.preview(toNoteName(moved.pitch, moved.octave));
-    };
-    const onEnd = (u: PointerEvent) => {
-      const p = press.current;
-      if (!p || u.pointerId !== p.pointerId) return;
-      if (p.dragging) latest.current.dispatch({ type: 'endDrag' });
-      press.current = null;
-      cleanup.current?.();
-    };
-    // Where `touch-action: none` on an SVG child is ignored, a vertical drag would scroll the
-    // sheet and end in pointercancel after one step; cancelling touchmove keeps the drag ours.
-    const onTouchMove = (t: TouchEvent) => t.preventDefault();
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onEnd);
-    window.addEventListener('pointercancel', onEnd);
-    window.addEventListener('touchmove', onTouchMove, { passive: false });
-    cleanup.current = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onEnd);
-      window.removeEventListener('pointercancel', onEnd);
-      window.removeEventListener('touchmove', onTouchMove);
-      cleanup.current = null;
-    };
-  }, []);
+  return { onNotePointerDown, isDragging };
 }

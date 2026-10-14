@@ -189,7 +189,7 @@ function EditorWorkspace({
   };
   useEditorKeyboard(onCommand, state.selection !== null);
 
-  const onNotePointerDown = useNoteDrag({
+  const { onNotePointerDown, isDragging } = useNoteDrag({
     events: state.song.events,
     selection: state.selection,
     dispatch,
@@ -319,6 +319,7 @@ function EditorWorkspace({
         playing={playback.currentEventIndex}
         flashMeasure={flashMeasure}
         onNotePointerDown={onNotePointerDown}
+        isDragging={isDragging}
         onBackgroundPointerDown={onBackgroundPointerDown}
         onGapClick={onGapClick}
       />
