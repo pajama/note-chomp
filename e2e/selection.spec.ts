@@ -36,6 +36,24 @@ test('a length button changes the selected note', async ({ page }) => {
   );
 });
 
+test('Eighth on a selected quarter in a full measure makes two beamed eighths, not an error', async ({
+  page,
+}) => {
+  await openEditor(page, 'cdefg');
+  await noteButton(page, 1).click();
+  await page.getByRole('button', { name: 'Eighth', exact: true }).click();
+  await expect(fruits(page)).toHaveCount(6);
+  await expect(page.getByTestId('toast')).toHaveCount(0);
+  await expect(noteButton(page, 1)).toHaveAccessibleName('Note 1: C, eighth note, selected');
+  await expect(noteButton(page, 2)).toHaveAccessibleName('Note 2: C, eighth note');
+  await expect(noteButton(page, 3)).toHaveAccessibleName('Note 3: D, quarter note');
+  await expect(glow(page)).toHaveAttribute('data-event-index', '0');
+  await expect(page.getByTestId('song-pages').locator('[data-kind="beam"]')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(fruits(page)).toHaveCount(5);
+  await expect(noteButton(page, 1)).toHaveAccessibleName('Note 1: C, quarter note, selected');
+});
+
 test('Backspace deletes the selected note and Esc lets go', async ({ page }) => {
   await openEditor(page, 'cde');
   await noteButton(page, 3).click();
