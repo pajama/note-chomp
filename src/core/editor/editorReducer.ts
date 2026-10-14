@@ -9,7 +9,13 @@ import type {
   TimeSignature,
 } from '../model/types';
 import { clampedStepPitch, isInRange, RANGE_LABEL, stepPitch } from '../theory/pitch';
-import { durationNameWithArticle, splitIntoMeasures, type MeasureError } from '../theory/rhythm';
+import {
+  durationNameWithArticle,
+  eventUnits,
+  fillUnits,
+  splitIntoMeasures,
+  type MeasureError,
+} from '../theory/rhythm';
 
 export const HISTORY_LIMIT = 100;
 
@@ -211,6 +217,16 @@ function changeSelectedLength(
 ): EditorState {
   const changed = withLength(target, duration, dotted);
   if (sameEvent(changed, target)) return { ...state, duration, dotted, error: null };
+  const freed = eventUnits(target) - eventUnits(changed);
+  const filler = freed > 0 ? fillUnits(freed, { duration, dotted }) : undefined;
+  if (filler && state.selection !== null) {
+    // Shortening: repeat the event at its new length so nothing after it moves.
+    const events = [...state.song.events];
+    const fill = filler.map((l) => withLength(target, l.duration, l.dotted));
+    events.splice(state.selection, 1, changed, ...fill);
+    const song = { ...state.song, events };
+    return { ...accept(state, song, state.selection + 1, state.selection), duration, dotted };
+  }
   const song = withSelected(state, changed);
   const check = splitIntoMeasures(song.events, song.timeSignature);
   if (!check.ok) {

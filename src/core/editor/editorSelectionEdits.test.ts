@@ -67,6 +67,88 @@ describe('length changes with a selection', () => {
   });
 });
 
+describe('shortening a selected event fills the freed time at the new length', () => {
+  const C = (duration: 'w' | 'h' | 'q' | 'e', dotted = false) => note('C', 4, duration, dotted);
+  const D = (duration: 'w' | 'h' | 'q' | 'e', dotted = false) => note('D', 4, duration, dotted);
+
+  /** C (selected) followed by a D that must stay exactly where it was. */
+  const shorten = (from: MusicEvent, ...actions: EditorAction[]) => {
+    const start = run(withEvents([from, D('q')]), { type: 'select', index: 0 });
+    return { start, s: run(start, ...actions) };
+  };
+
+  it.each([
+    ['q → e', C('q'), 'e', [C('e'), C('e')]],
+    ['h → q', C('h'), 'q', [C('q'), C('q')]],
+    ['w → q', C('w'), 'q', [C('q'), C('q'), C('q'), C('q')]],
+    ['w → e', C('w'), 'e', Array.from({ length: 8 }, () => C('e'))],
+    ['dotted q → e', C('q', true), 'e', [C('e'), C('e'), C('e')]],
+  ] as const)('setDuration %s', (_, from, duration, expected) => {
+    const { s } = shorten(from, { type: 'setDuration', duration });
+    expect(s.error).toBeNull();
+    expect(s.song.events).toEqual([...expected, D('q')]);
+  });
+
+  it('turns a selected quarter in a full measure into two eighths instead of an error (bug repro)', () => {
+    const bar = [C('q'), D('q'), note('E', 4, 'q'), note('F', 4, 'q'), note('G', 4, 'w')];
+    const start = run(withEvents(bar), { type: 'select', index: 0 });
+    const s = run(start, { type: 'setDuration', duration: 'e' });
+    expect(s.error).toBeNull();
+    expect(s.errorMeasure).toBeNull();
+    expect(s.song.events).toEqual([C('e'), C('e'), ...bar.slice(1)]);
+  });
+
+  it('setDuration keeps the dot: dotted h → dotted q gives two dotted quarters', () => {
+    const { s } = shorten(C('h', true), { type: 'setDuration', duration: 'q' });
+    expect(s.song.events).toEqual([C('q', true), C('q', true), D('q')]);
+  });
+
+  it('un-dotting a dotted quarter gives [q, e]', () => {
+    const { s } = shorten(C('q', true), { type: 'toggleDotted' });
+    expect(s.error).toBeNull();
+    expect(s.song.events).toEqual([C('q'), C('e'), D('q')]);
+  });
+
+  it('un-dotting a dotted half gives [h, q]', () => {
+    const { s } = shorten(C('h', true), { type: 'toggleDotted' });
+    expect(s.song.events).toEqual([C('h'), C('q'), D('q')]);
+  });
+
+  it('keeps the selection on the shortened note and makes the new length the default', () => {
+    const { s } = shorten(C('q', true), { type: 'setDuration', duration: 'e' });
+    expect(s).toMatchObject({ selection: 0, cursor: 1, duration: 'e', dotted: false });
+    const { s: undotted } = shorten(C('q', true), { type: 'toggleDotted' });
+    expect(undotted).toMatchObject({ selection: 0, duration: 'q', dotted: false });
+  });
+
+  it('is a single undo step that brings back the original note', () => {
+    const { start, s } = shorten(C('w'), { type: 'setDuration', duration: 'e' });
+    expect(s.past).toHaveLength(1);
+    const undone = run(s, { type: 'undo' });
+    expect(undone.song.events).toEqual(start.song.events);
+    expect(undone.selection).toBe(0);
+    expect(run(undone, { type: 'redo' }).song.events).toEqual(s.song.events);
+  });
+
+  it('fills with rests when the selected event is a rest', () => {
+    const start = run(withEvents([rest('h'), D('h')]), { type: 'select', index: 0 });
+    const s = run(start, { type: 'setDuration', duration: 'e' });
+    expect(s.song.events).toEqual([rest('e'), rest('e'), rest('e'), rest('e'), D('h')]);
+  });
+
+  it('shortening the last note of a song still fills its measure', () => {
+    const start = run(withEvents([C('q'), D('q')]), { type: 'select', index: 1 });
+    const s = run(start, { type: 'setDuration', duration: 'e' });
+    expect(s.song.events).toEqual([C('q'), D('e'), D('e')]);
+    expect(s.selection).toBe(1);
+  });
+
+  it('still lengthens a selected note when it fits, without adding notes', () => {
+    const { s } = shorten(C('e'), { type: 'setDuration', duration: 'q' });
+    expect(s.song.events).toEqual([C('q'), D('q')]);
+  });
+});
+
 describe('deleting with a selection', () => {
   it('deletes the selected event and selects the one before it', () => {
     const start = withEvents([note('C', 4, 'q'), note('D', 4, 'q'), note('E', 4, 'q')]);
