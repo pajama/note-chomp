@@ -3,13 +3,16 @@ import { createEditorState, editorReducer } from '../../core/editor/editorReduce
 import { createEmptySong } from '../../core/model/factories';
 import { newSongId } from '../../core/model/id';
 import { TIME_SIGNATURES, type Pitch, type Song, type TimeSignature } from '../../core/model/types';
+import { isInRange, toNoteName } from '../../core/theory/pitch';
 import { clearDraft, saveDraft } from '../../persistence/draft';
 import { DurationPicker } from '../components/DurationPicker';
 import { EditorSheet } from '../components/EditorSheet';
 import { FruitKeyboard } from '../components/FruitKeyboard';
 import { HelpPopover } from '../components/HelpPopover';
+import { PlaybackControls } from '../components/PlaybackControls';
 import { Toast } from '../components/Toast';
 import { useEditorKeyboard } from '../hooks/useEditorKeyboard';
+import { usePlayback } from '../hooks/usePlayback';
 import { useToast } from '../hooks/useToast';
 import { navigate, setNavigationGuard } from '../router';
 import { useServices } from '../services';
@@ -63,6 +66,7 @@ function EditorWorkspace({
   const [saving, setSaving] = useState(false);
   const [flashMeasure, setFlashMeasure] = useState<number | null>(null);
   const toast = useToast();
+  const playback = usePlayback(state.song);
   const selected = state.selection === null ? undefined : state.song.events[state.selection];
 
   useEditorKeyboard(dispatch);
@@ -80,6 +84,12 @@ function EditorWorkspace({
     const timer = setTimeout(() => setFlashMeasure(null), FLASH_MS);
     return () => clearTimeout(timer);
   }, [flashMeasure]);
+  const { error: playbackError, dismissError: dismissPlaybackError } = playback;
+  useEffect(() => {
+    if (!playbackError) return;
+    show(playbackError);
+    dismissPlaybackError();
+  }, [playbackError, dismissPlaybackError, show]);
 
   useEffect(() => {
     if (state.dirty) saveDraft(storage, state.song);
@@ -103,7 +113,13 @@ function EditorWorkspace({
     [],
   );
 
+  const previewPitch = (pitch: Pitch, baseOctave: 4 | 5) => {
+    const octave = baseOctave + state.octaveShift;
+    if (isInRange(pitch, octave)) playback.preview(toNoteName(pitch, octave));
+  };
+
   const onNote = (pitch: Pitch, baseOctave: 4 | 5) => {
+    previewPitch(pitch, baseOctave);
     dispatch(
       state.selection === null
         ? { type: 'insertNote', pitch, baseOctave }
@@ -203,7 +219,7 @@ function EditorWorkspace({
         song={state.song}
         cursor={state.cursor}
         selection={state.selection}
-        playing={null}
+        playing={playback.currentEventIndex}
         flashMeasure={flashMeasure}
         onNotePointerDown={onNotePointerDown}
         onBackgroundPointerDown={onBackgroundPointerDown}
@@ -213,6 +229,14 @@ function EditorWorkspace({
       <div className="editor-dock no-print">
         <Toast message={toast.toast} onDismiss={toast.dismiss} />
         <div className="dock-row">
+          <PlaybackControls
+            status={playback.status}
+            canPlay={state.song.events.length > 0}
+            bpm={playback.bpm}
+            onPlay={() => playback.play(state.selection ?? 0)}
+            onStop={playback.stop}
+            onBpm={playback.setBpm}
+          />
           <DurationPicker
             duration={selected?.duration ?? state.duration}
             dotted={selected ? !!selected.dotted : state.dotted}
