@@ -32,6 +32,20 @@ export function usePlayback(song: Song): Playback {
     controller.stop();
   }, [song.events, song.timeSignature, controller]);
 
+  // A new tempo while playing carries on from the note now sounding, at the new speed.
+  const latest = useRef({ song, snapshot });
+  useEffect(() => {
+    latest.current = { song, snapshot };
+  });
+  const playedBpm = useRef(bpm);
+  useEffect(() => {
+    if (playedBpm.current === bpm) return;
+    playedBpm.current = bpm;
+    const { song: current, snapshot: now } = latest.current;
+    if (now.status !== 'playing' || now.currentEventIndex === null) return;
+    void controller.play(current, bpm, now.currentEventIndex);
+  }, [bpm, controller]);
+
   useEffect(() => () => controller.stop(), [controller]);
   // Fetch Tone's code now (no sound yet), so the first Play can resume audio inside the gesture.
   useEffect(() => player.prefetch(), [player]);

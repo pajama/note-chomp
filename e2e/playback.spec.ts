@@ -118,3 +118,22 @@ test('holding Space starts playback once instead of flapping play/stop', async (
   expect(log.filter((c) => c.kind === 'play')).toHaveLength(1);
   expect(log.filter((c) => c.kind === 'stop')).toHaveLength(0);
 });
+
+test('moving the tempo slider while playing carries on from the current note at the new speed', async ({
+  page,
+}) => {
+  await openEditor(page, 'cdefgabc');
+  await page.getByLabel('Tempo').fill('60');
+  await playButton(page).click();
+  await expect(halo(page)).toHaveAttribute('data-event-index', '1', { timeout: 3000 });
+  await page.getByLabel('Tempo').fill('160');
+  await expect(stopButton(page)).toBeVisible();
+  await expect
+    .poll(async () => (await audioLog(page)).filter((c) => c.kind === 'play'))
+    .toEqual([
+      { kind: 'play', notes: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C4'] },
+      { kind: 'play', notes: ['D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C4'] },
+    ]);
+  // Seven quarter notes at 160 bpm take about 2.6 s; at 60 bpm they would take 7 s.
+  await expect(playButton(page)).toBeVisible({ timeout: 4000 });
+});
