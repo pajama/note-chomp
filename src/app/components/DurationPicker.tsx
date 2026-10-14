@@ -30,7 +30,7 @@ export function DurationPicker({
   // A pressed Dot is never disabled, so it can always be switched off.
   const dotReason = dotted ? null : dotUnavailable(duration, timeSignature);
   return (
-    <div className="toolbar" role="group" aria-label="Note length">
+    <div className="toolbar duration-picker" role="group" aria-label="Note length">
       {OPTIONS.map((o) => {
         const tooLong = durationTooLong(o.duration, timeSignature);
         return (
