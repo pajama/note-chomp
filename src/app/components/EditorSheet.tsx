@@ -1,4 +1,4 @@
-import { useMemo, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   compactSheet,
   cursorPosition,
@@ -9,6 +9,7 @@ import {
 } from '../../core/layout';
 import type { Song } from '../../core/model/types';
 import { SheetSvg } from '../../render/svg/SheetSvg';
+import { scrollAnchorSelector } from '../editorFocus';
 import { messageOf } from '../useSongLibrary';
 
 /** The editor always shows the default (Large) staff; print options apply only to Print. */
@@ -27,7 +28,7 @@ export interface EditorSheetProps {
   onBackgroundPointerDown?: () => void;
 }
 
-/** The scrolling sheet in the middle of the editor. */
+/** The scrolling sheet in the middle of the editor. Keeps the cursor / selection / playing note in view. */
 export function EditorSheet({
   song,
   cursor,
@@ -38,6 +39,7 @@ export function EditorSheet({
   onGapClick,
   onBackgroundPointerDown,
 }: EditorSheetProps) {
+  const scroller = useRef<HTMLDivElement>(null);
   const view = useMemo(() => {
     try {
       const result = layoutSong(song, EDITOR_OPTIONS);
@@ -51,6 +53,12 @@ export function EditorSheet({
       return { ok: false as const, message: messageOf(e) };
     }
   }, [song]);
+
+  // After any edit, move, or playback step: keep the thing you're looking at on screen.
+  useEffect(() => {
+    const anchor = scroller.current?.querySelector(scrollAnchorSelector(playing, selection));
+    anchor?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }, [playing, selection, cursor, song.events]);
 
   if (!view.ok) {
     return (
@@ -68,7 +76,12 @@ export function EditorSheet({
     onBackgroundPointerDown?.();
   };
   return (
-    <div className="sheet-scroll" data-testid="song-pages" onPointerDown={onSheetPointerDown}>
+    <div
+      className="sheet-scroll"
+      ref={scroller}
+      data-testid="song-pages"
+      onPointerDown={onSheetPointerDown}
+    >
       <SheetSvg
         sheet={view.sheet}
         targets={view.targets}

@@ -11,6 +11,7 @@ import { FruitKeyboard } from '../components/FruitKeyboard';
 import { HelpPopover } from '../components/HelpPopover';
 import { PlaybackControls } from '../components/PlaybackControls';
 import { Toast } from '../components/Toast';
+import { selectionAnnouncement } from '../editorFocus';
 import { useEditorKeyboard, type EditorCommand } from '../hooks/useEditorKeyboard';
 import { useNoteDrag } from '../hooks/useNoteDrag';
 import { usePlayback } from '../hooks/usePlayback';
@@ -243,6 +244,10 @@ function EditorWorkspace({
         onBackgroundPointerDown={onBackgroundPointerDown}
         onGapClick={onGapClick}
       />
+
+      <div className="sr-only" aria-live="polite" data-testid="selection-announcer">
+        {selectionAnnouncement(state.song.events, state.selection)}
+      </div>
 
       <div className="editor-dock no-print">
         <Toast message={toast.toast} onDismiss={toast.dismiss} />
