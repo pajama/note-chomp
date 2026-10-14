@@ -4,13 +4,14 @@ import { createEmptySong } from '../../core/model/factories';
 import { newSongId } from '../../core/model/id';
 import { TIME_SIGNATURES, type Pitch, type Song, type TimeSignature } from '../../core/model/types';
 import { isInRange, toNoteName } from '../../core/theory/pitch';
-import { clearDraft, saveDraft } from '../../persistence/draft';
+import { clearDraft, loadDraft, saveDraft } from '../../persistence/draft';
 import { DurationPicker } from '../components/DurationPicker';
 import { EDITOR_OPTIONS, EditorSheet } from '../components/EditorSheet';
 import { FruitKeyboard } from '../components/FruitKeyboard';
 import { HelpPopover } from '../components/HelpPopover';
 import { PlaybackControls } from '../components/PlaybackControls';
 import { Toast } from '../components/Toast';
+import { draftToOffer, type EditorOpening } from '../draftOffer';
 import { selectionAnnouncement } from '../editorFocus';
 import { useEditorKeyboard, type EditorCommand } from '../hooks/useEditorKeyboard';
 import { useNoteDrag } from '../hooks/useNoteDrag';
@@ -22,6 +23,7 @@ import { messageOf, useSongLibrary, type SongLibrary } from '../useSongLibrary';
 
 export const LEAVE_UNSAVED_MESSAGE = 'Your song is not saved yet. Leave without saving it?';
 export const NEW_SONG_MESSAGE = "Start a new song? Your current one isn't saved.";
+export const SAVED_MESSAGE = 'Saved!';
 /** How long the problem measure flashes after an error. */
 const FLASH_MS = 1200;
 
@@ -33,11 +35,16 @@ interface EditorPageProps {
 
 export function EditorPage({ songId, onSavedAs }: EditorPageProps) {
   const library = useSongLibrary();
+  if (library.status === 'loading') return <p>Loading…</p>;
   if (songId === undefined)
     return (
-      <EditorWorkspace initialSong={createEmptySong()} library={library} onSavedAs={onSavedAs} />
+      <EditorWorkspace
+        initialSong={createEmptySong()}
+        opening="new"
+        library={library}
+        onSavedAs={onSavedAs}
+      />
     );
-  if (library.status === 'loading') return <p>Loading…</p>;
   const entry = library.find(songId);
   if (!entry) {
     return (
@@ -52,15 +59,24 @@ export function EditorPage({ songId, onSavedAs }: EditorPageProps) {
   const initial = entry.builtin
     ? { ...entry.song, id: newSongId(), title: `${entry.song.title} (my copy)` }
     : entry.song;
-  return <EditorWorkspace initialSong={initial} library={library} onSavedAs={onSavedAs} />;
+  return (
+    <EditorWorkspace
+      initialSong={initial}
+      opening={entry.builtin ? 'copy' : 'saved'}
+      library={library}
+      onSavedAs={onSavedAs}
+    />
+  );
 }
 
 function EditorWorkspace({
   initialSong,
+  opening,
   library,
   onSavedAs,
 }: {
   initialSong: Song;
+  opening: EditorOpening;
   library: SongLibrary;
   onSavedAs?: (id: string) => void;
 }) {
@@ -68,6 +84,14 @@ function EditorWorkspace({
   const [state, dispatch] = useReducer(editorReducer, initialSong, createEditorState);
   const [saving, setSaving] = useState(false);
   const [flashMeasure, setFlashMeasure] = useState<number | null>(null);
+  const [offer, setOffer] = useState(() =>
+    draftToOffer(
+      loadDraft(storage),
+      initialSong,
+      opening,
+      (id) => library.find(id)?.builtin === false,
+    ),
+  );
   const toast = useToast();
   const playback = usePlayback(state.song);
   const selected = state.selection === null ? undefined : state.song.events[state.selection];
@@ -95,6 +119,11 @@ function EditorWorkspace({
   useEffect(() => {
     if (state.dirty) saveDraft(storage, state.song);
   }, [state.song, state.dirty, storage]);
+
+  // Editing without answering the draft question means "no thanks" (the draft is now this song).
+  useEffect(() => {
+    if (state.dirty) setOffer(undefined);
+  }, [state.dirty]);
 
   useEffect(() => {
     if (!state.dirty) return;
@@ -168,6 +197,8 @@ function EditorWorkspace({
       dispatch({ type: 'markSaved' });
       dirtyRef.current = false;
       clearDraft(storage);
+      setOffer(undefined);
+      show(SAVED_MESSAGE, 'info');
       return saved;
     } catch (e) {
       show(messageOf(e));
@@ -246,6 +277,31 @@ function EditorWorkspace({
           Print
         </button>
       </div>
+
+      {offer && (
+        <div className="draft-offer alert" role="group" aria-label="Unsaved draft">
+          <span>Pick up where you left off?</span>
+          <button
+            type="button"
+            onClick={() => {
+              dispatch({ type: 'restore', song: offer });
+              setOffer(undefined);
+            }}
+          >
+            Restore
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              clearDraft(storage);
+              setOffer(undefined);
+            }}
+          >
+            Discard
+          </button>
+        </div>
+      )}
 
       <EditorSheet
         song={state.song}
