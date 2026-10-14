@@ -56,7 +56,11 @@ export function ImportPage() {
           style={{ width: '100%', fontFamily: 'ui-monospace, monospace' }}
           placeholder={PLACEHOLDER}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setResult(null);
+            setSaveError(null);
+          }}
         />
         <div className="toolbar">
           <button type="button" disabled={!text.trim()} onClick={() => run({ kind: 'text', text })}>

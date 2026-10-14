@@ -20,7 +20,7 @@ import {
   timeChangeError,
 } from '../importHelpers';
 import { IssueCollector } from '../issues';
-import type { ImportResult } from '../types';
+import { importFailure, type ImportResult } from '../types';
 
 /** Letter + first three letters of the mode ('' = major, 'm' = minor). Every one of these uses only white keys. */
 const SUPPORTED_KEYS = new Set([
@@ -63,6 +63,16 @@ interface Header {
   meter: TimeSignature;
   unitUnits?: number;
   voices: Set<string>;
+  /** A K: field was seen (every real ABC tune has one). */
+  sawKey: boolean;
+  /** Characters in the tune body we couldn't read. */
+  skipped: number;
+}
+
+export const NOT_MUSIC_ERROR = 'No notes were found. Is this ABC, MusicXML or a Note Chomp file?';
+
+export function skippedWarning(count: number): string {
+  return `Skipped ${count} ${count === 1 ? 'character' : 'characters'} we didn't understand.`;
 }
 
 function stripComment(line: string): string {
@@ -110,6 +120,7 @@ function readField(
       return;
     }
     case 'K':
+      header.sawKey = true;
       if (!isSupportedKey(value))
         issues.error(
           `This tune is in the key of ${value}. Only the key of C is supported for now.`,
@@ -133,7 +144,7 @@ function readField(
 
 export function parseAbc(text: string): ImportResult {
   const issues = new IssueCollector();
-  const header: Header = { meter: '4/4', voices: new Set() };
+  const header: Header = { meter: '4/4', voices: new Set(), sawKey: false, skipped: 0 };
   const body: string[] = [];
   let seenTune = false;
   let inBody = false;
@@ -165,6 +176,14 @@ export function parseAbc(text: string): ImportResult {
   }
 
   const events = tokenizeBody(body.join(' '), header, issues);
+  if (header.skipped > 0) {
+    // Plain text (a shopping list, a sentence) is mostly letters we can't read, plus a few a–g.
+    const notes = events.filter((e) => e.kind === 'note').length;
+    const looksLikeText = !header.sawKey || header.skipped > notes;
+    // A real error (a sharp, a bad meter) says more than "no notes were found".
+    if (looksLikeText && !issues.hasErrors) return importFailure([NOT_MUSIC_ERROR]);
+    issues.warn(skippedWarning(header.skipped));
+  }
 
   return finalizeImport(
     {
@@ -371,7 +390,7 @@ function tokenizeBody(src: string, header: Header, issues: IssueCollector): Musi
       while ('^_='.includes(peek()) && i < src.length) accidental += src[i++];
       const letter = peek();
       if (!/[A-Ga-g]/.test(letter)) {
-        issues.warn(`Skipped an unrecognized symbol in measure ${measure}.`);
+        header.skipped++;
         continue;
       }
       i++;
@@ -424,7 +443,7 @@ function tokenizeBody(src: string, header: Header, issues: IssueCollector): Musi
       continue;
     }
 
-    issues.warn(`Skipped an unrecognized symbol "${ch}" in measure ${measure}.`);
+    header.skipped++;
     i++;
   }
   endBar();
