@@ -11,7 +11,7 @@ import { FruitKeyboard } from '../components/FruitKeyboard';
 import { HelpPopover } from '../components/HelpPopover';
 import { PlaybackControls } from '../components/PlaybackControls';
 import { Toast } from '../components/Toast';
-import { useEditorKeyboard } from '../hooks/useEditorKeyboard';
+import { useEditorKeyboard, type EditorCommand } from '../hooks/useEditorKeyboard';
 import { useNoteDrag } from '../hooks/useNoteDrag';
 import { usePlayback } from '../hooks/usePlayback';
 import { useToast } from '../hooks/useToast';
@@ -69,8 +69,6 @@ function EditorWorkspace({
   const toast = useToast();
   const playback = usePlayback(state.song);
   const selected = state.selection === null ? undefined : state.song.events[state.selection];
-
-  useEditorKeyboard(dispatch);
 
   // Reducer errors become a toast plus a brief flash on the measure they are about.
   const { show } = toast;
@@ -130,6 +128,20 @@ function EditorWorkspace({
 
   const onRest = () =>
     dispatch(state.selection === null ? { type: 'insertRest' } : { type: 'restSelected' });
+
+  const togglePlayback = () => {
+    if (playback.playing) playback.stop();
+    else playback.play(state.selection ?? 0);
+  };
+
+  const onCommand = (command: EditorCommand) => {
+    if (command.type === 'togglePlayback') return togglePlayback();
+    if (command.type === 'insertNote' || command.type === 'changeSelectedPitch') {
+      previewPitch(command.pitch, command.baseOctave);
+    }
+    dispatch(command);
+  };
+  useEditorKeyboard(onCommand, state.selection !== null);
 
   const onNotePointerDown = useNoteDrag({
     events: state.song.events,

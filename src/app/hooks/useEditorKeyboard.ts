@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { EditorAction } from '../../core/editor/editorReducer';
 import type { Pitch } from '../../core/model/types';
+
+/** Everything a key can do in the editor: a reducer action, or start/stop playback. */
+export type EditorCommand = EditorAction | { type: 'togglePlayback' };
 
 interface KeyInfo {
   key: string;
@@ -10,14 +13,21 @@ interface KeyInfo {
   altKey: boolean;
 }
 
-export function keyToAction(e: KeyInfo): EditorAction | undefined {
+export interface KeyContext {
+  hasSelection: boolean;
+}
+
+export function keyToCommand(e: KeyInfo, { hasSelection }: KeyContext): EditorCommand | undefined {
   const mod = e.ctrlKey || e.metaKey;
   const lower = e.key.toLowerCase();
   if (mod && lower === 'z') return e.shiftKey ? { type: 'redo' } : { type: 'undo' };
   if (mod && lower === 'y') return { type: 'redo' };
   if (mod || e.altKey) return undefined;
   if (lower.length === 1 && 'cdefgab'.includes(lower)) {
-    return { type: 'insertNote', pitch: lower.toUpperCase() as Pitch, baseOctave: 4 };
+    const pitch = lower.toUpperCase() as Pitch;
+    return hasSelection
+      ? { type: 'changeSelectedPitch', pitch, baseOctave: 4 }
+      : { type: 'insertNote', pitch, baseOctave: 4 };
   }
   switch (e.key) {
     case '1':
@@ -32,36 +42,59 @@ export function keyToAction(e: KeyInfo): EditorAction | undefined {
       return { type: 'toggleDotted' };
     case 'r':
     case 'R':
-      return { type: 'insertRest' };
+      return hasSelection ? { type: 'restSelected' } : { type: 'insertRest' };
     case 'Backspace':
+    case 'Delete':
       return { type: 'deleteBackward' };
     case 'ArrowLeft':
-      return { type: 'moveCursor', delta: -1 };
+      return { type: 'navigate', delta: -1 };
     case 'ArrowRight':
-      return { type: 'moveCursor', delta: 1 };
+      return { type: 'navigate', delta: 1 };
     case 'ArrowUp':
-      return { type: 'shiftOctave', delta: 1 };
+      return hasSelection && !e.shiftKey
+        ? { type: 'nudgeSelected', steps: 1 }
+        : { type: 'shiftOctave', delta: 1 };
     case 'ArrowDown':
-      return { type: 'shiftOctave', delta: -1 };
+      return hasSelection && !e.shiftKey
+        ? { type: 'nudgeSelected', steps: -1 }
+        : { type: 'shiftOctave', delta: -1 };
+    case 'Escape':
+      return { type: 'clearSelection' };
+    case ' ':
+      return { type: 'togglePlayback' };
     default:
       return undefined;
   }
 }
 
-export function useEditorKeyboard(dispatch: (action: EditorAction) => void): void {
+/** Keys typed here belong to the field. The tempo slider is not one: it only keeps its arrows. */
+const TEXT_FIELDS = 'input:not([type="range"]), textarea, select, [contenteditable="true"]';
+/**
+ * Space keeps its native meaning only here. Other buttons (fruit keys, lengths, Undo…) keep focus
+ * after a tap, and "tap fruits, press Space to listen" must play, not tap the fruit again.
+ */
+const SPACE_OWNERS = `${TEXT_FIELDS}, a[href], .play-button, .help-button`;
+
+export function useEditorKeyboard(
+  onCommand: (command: EditorCommand) => void,
+  hasSelection: boolean,
+): void {
+  const latest = useRef({ onCommand, hasSelection });
+  useEffect(() => {
+    latest.current = { onCommand, hasSelection };
+  });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof Element &&
-        e.target.closest('input, textarea, select, [contenteditable="true"]')
-      )
-        return;
-      const action = keyToAction(e);
-      if (!action) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest(TEXT_FIELDS)) return;
+      if (target?.matches('input[type="range"]') && e.key.startsWith('Arrow')) return;
+      if (e.key === ' ' && target?.closest(SPACE_OWNERS)) return;
+      const command = keyToCommand(e, { hasSelection: latest.current.hasSelection });
+      if (!command) return;
       e.preventDefault();
-      dispatch(action);
+      latest.current.onCommand(command);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [dispatch]);
+  }, []);
 }
