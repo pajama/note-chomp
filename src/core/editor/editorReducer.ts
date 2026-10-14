@@ -56,6 +56,7 @@ export type EditorAction =
   | { type: 'nudgeSelected'; steps: number }
   | { type: 'dragSelected'; steps: number }
   | { type: 'endDrag' }
+  | { type: 'restSelected' }
   | { type: 'setDuration'; duration: Duration }
   | { type: 'toggleDotted' }
   | { type: 'shiftOctave'; delta: 1 | -1 }
@@ -64,6 +65,7 @@ export type EditorAction =
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'load'; song: Song }
+  | { type: 'restore'; song: Song }
   | { type: 'markSaved' }
   | { type: 'dismissError' };
 
@@ -158,6 +160,23 @@ function deleteBackward(state: EditorState): EditorState {
   return accept(state, { ...state.song, events }, target);
 }
 
+/** Backspace with a selection: same rule, then select the event before it (or put the cursor at the start). */
+function deleteSelected(state: EditorState, target: number): EditorState {
+  const previous = target > 0 ? target - 1 : null;
+  const cursor = previous === null ? 0 : previous + 1;
+  const removed = state.song.events.filter((_, i) => i !== target);
+  if (splitIntoMeasures(removed, state.song.timeSignature).ok) {
+    return accept(state, { ...state.song, events: removed }, cursor, previous);
+  }
+  const old = state.song.events[target];
+  if (old.kind === 'rest') {
+    return { ...state, cursor, selection: previous, error: null, errorMeasure: null };
+  }
+  const events = [...state.song.events];
+  events[target] = rest(old.duration, old.dotted ?? false);
+  return accept(state, { ...state.song, events }, cursor, previous);
+}
+
 function rangeMessage(pitch: Pitch, octave: number): string {
   return `That ${pitch} is too ${octave < 4 ? 'low' : 'high'} — Note Chomp notes go from the G below middle C up to high C (${RANGE_LABEL}).`;
 }
@@ -175,6 +194,34 @@ function withSelected(state: EditorState, event: MusicEvent): Song {
 function sameEvent(a: MusicEvent, b: MusicEvent): boolean {
   if (a.kind !== b.kind || a.duration !== b.duration || !!a.dotted !== !!b.dotted) return false;
   return a.kind === 'rest' || (b.kind === 'note' && a.pitch === b.pitch && a.octave === b.octave);
+}
+
+function withLength(event: MusicEvent, duration: Duration, dotted: boolean): MusicEvent {
+  return event.kind === 'note'
+    ? note(event.pitch, event.octave, duration, dotted)
+    : rest(duration, dotted);
+}
+
+/** Give the selected event a new length; on success it also becomes the length for new notes. */
+function changeSelectedLength(
+  state: EditorState,
+  target: MusicEvent,
+  duration: Duration,
+  dotted: boolean,
+): EditorState {
+  const changed = withLength(target, duration, dotted);
+  if (sameEvent(changed, target)) return { ...state, duration, dotted, error: null };
+  const song = withSelected(state, changed);
+  const check = splitIntoMeasures(song.events, song.timeSignature);
+  if (!check.ok) {
+    const lead = `Making it ${durationNameWithArticle(changed)}`;
+    const message =
+      state.selection !== null && check.error.eventIndex > state.selection
+        ? pushedOutMessage(lead, check.error, song.events)
+        : check.error.message;
+    return reject(state, message, check.error.measureNumber);
+  }
+  return { ...accept(state, song, state.cursor, state.selection), duration, dotted };
 }
 
 function select(state: EditorState, index: number): EditorState {
@@ -195,7 +242,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'insertRest':
       return insert(state, rest(state.duration, state.dotted));
     case 'deleteBackward':
-      return deleteBackward(state);
+      return state.selection === null
+        ? deleteBackward(state)
+        : deleteSelected(state, state.selection);
     case 'moveCursor':
       return {
         ...state,
@@ -271,16 +320,34 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         drag: null,
       };
     }
-    case 'setDuration':
+    case 'restSelected': {
+      const target = selectedEvent(state);
+      if (!target || target.kind !== 'note') return state;
+      const changed = rest(target.duration, target.dotted ?? false);
+      return accept(state, withSelected(state, changed), state.cursor, state.selection);
+    }
+    case 'setDuration': {
       // dotted eighths are not offered
-      return {
-        ...state,
-        duration: action.duration,
-        dotted: action.duration === 'e' ? false : state.dotted,
-      };
-    case 'toggleDotted':
-      if (state.duration === 'e') return state;
-      return { ...state, dotted: !state.dotted };
+      const target = selectedEvent(state);
+      if (!target) {
+        return {
+          ...state,
+          duration: action.duration,
+          dotted: action.duration === 'e' ? false : state.dotted,
+        };
+      }
+      const dotted = action.duration === 'e' ? false : (target.dotted ?? false);
+      return changeSelectedLength(state, target, action.duration, dotted);
+    }
+    case 'toggleDotted': {
+      const target = selectedEvent(state);
+      if (!target) {
+        if (state.duration === 'e') return state;
+        return { ...state, dotted: !state.dotted };
+      }
+      if (target.duration === 'e') return state;
+      return changeSelectedLength(state, target, target.duration, !target.dotted);
+    }
     case 'shiftOctave':
       return {
         ...state,
@@ -325,6 +392,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
     case 'load':
       return createEditorState(action.song);
+    case 'restore':
+      return { ...createEditorState(action.song), dirty: true };
     case 'markSaved':
       return { ...state, dirty: false };
     case 'dismissError':
