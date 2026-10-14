@@ -6,7 +6,7 @@ test.use({ viewport: { width: 1024, height: 700 }, hasTouch: true });
 /** A real one-finger swipe (touch events through CDP, so the browser may scroll). */
 async function swipe(page: Page, x: number, fromY: number, toY: number) {
   const cdp = await page.context().newCDPSession(page);
-  const touch = (type: string, y: number) =>
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', y: number) =>
     cdp.send('Input.dispatchTouchEvent', {
       type,
       touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
