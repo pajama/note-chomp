@@ -22,12 +22,12 @@
     // only real page. An unknown path is a genuine mistake and should 404 —
     // serving index.html for everything would answer a missing piano sample
     // with HTML and fail confusingly inside the audio decoder.
-    "not_found_handling": "none"
+    "not_found_handling": "none",
   },
 
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 
   // Custom domain: once the domain is on this Cloudflare account, add
   //   "routes": [{ "pattern": "example.com", "custom_domain": true }]
