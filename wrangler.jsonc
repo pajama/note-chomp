@@ -29,7 +29,8 @@
     "enabled": true,
   },
 
-  // Custom domain: once the domain is on this Cloudflare account, add
-  //   "routes": [{ "pattern": "example.com", "custom_domain": true }]
-  // (or attach it in the dashboard under the Worker's Settings → Domains & Routes).
+  // The production domain. Declared here so `wrangler deploy` (and the Git
+  // integration's builds) keep it attached; the dashboard shows the same entry
+  // under the Worker's Settings → Domains & Routes.
+  "routes": [{ "pattern": "notechomp.com", "custom_domain": true }],
 }
