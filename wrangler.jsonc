@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+
+  // The Worker's name. Cloudflare's Git integration requires that this string
+  // match the Worker name shown in the dashboard exactly, or the build fails
+  // with no other explanation. Renaming here means renaming there too.
+  "name": "note-chomp",
+
+  // Pins runtime behaviour to what shipped on this date, so a future change to
+  // Cloudflare's defaults cannot alter how the site is served. Bump it
+  // deliberately, not casually.
+  "compatibility_date": "2026-10-17",
+
+  // No "main" key: there is no server. `vite build` writes static files (the
+  // app, the bundled starter songs, and the piano samples) and Cloudflare
+  // serves them straight off the edge. Songs live in each visitor's own
+  // localStorage, so there is no backend to run.
+  "assets": {
+    "directory": "./dist",
+
+    // The app routes with the URL hash (#/edit/…, #/print/…), so `/` is the
+    // only real page. An unknown path is a genuine mistake and should 404 —
+    // serving index.html for everything would answer a missing piano sample
+    // with HTML and fail confusingly inside the audio decoder.
+    "not_found_handling": "none"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+
+  // Custom domain: once the domain is on this Cloudflare account, add
+  //   "routes": [{ "pattern": "example.com", "custom_domain": true }]
+  // (or attach it in the dashboard under the Worker's Settings → Domains & Routes).
+}

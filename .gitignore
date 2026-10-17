@@ -23,3 +23,6 @@ ape-docs.json
 
 # generated TypeScript build info
 *.tsbuildinfo
+
+# wrangler local state
+.wrangler/

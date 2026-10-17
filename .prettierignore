@@ -10,3 +10,4 @@ ape-docs.json
 *.abc
 **/__snapshots__
 .superpowers
+.wrangler

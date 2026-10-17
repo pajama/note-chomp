@@ -1,0 +1,20 @@
+# Response headers for the deployed site.
+# https://developers.cloudflare.com/workers/static-assets/headers/
+#
+# Vite copies everything in public/ to the root of dist/, which is the asset
+# directory Cloudflare serves, so this file lands where Cloudflare looks for it.
+# It is parsed, never served.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Vite content-hashes these filenames, so a given URL's bytes can never change.
+# Cache them forever; a new build produces new URLs.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The piano samples are not content-hashed, but they never change in practice.
+# A week keeps repeat visits instant without pinning a bad file forever.
+/samples/*
+  Cache-Control: public, max-age=604800
